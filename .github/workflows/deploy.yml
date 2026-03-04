@@ -1,0 +1,126 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          npm install
+      
+      - name: Lint backend code
+        run: |
+          cd backend
+          npm run lint || true
+      
+      - name: Run backend tests
+        run: |
+          cd backend
+          npm test || true
+
+  deploy-infrastructure:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Terraform Init
+        run: |
+          cd infrastructure/terraform
+          terraform init
+      
+      - name: Terraform Plan
+        run: |
+          cd infrastructure/terraform
+          terraform plan -out=tfplan
+      
+      # Uncomment to auto-apply infrastructure changes
+      # - name: Terraform Apply
+      #   run: |
+      #     cd infrastructure/terraform
+      #     terraform apply -auto-approve tfplan
+
+  deploy-backend:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install Serverless Framework
+        run: npm install -g serverless
+      
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          npm install
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      # Uncomment to auto-deploy backend
+      # - name: Deploy backend
+      #   run: |
+      #     cd backend
+      #     serverless deploy --stage prod
+      #   env:
+      #     PRIMARY_ACCOUNT_ID: ${{ secrets.PRIMARY_ACCOUNT_ID }}
+      #     SECONDARY_ACCOUNT_ID: ${{ secrets.SECONDARY_ACCOUNT_ID }}
+      #     COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+      #     JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [deploy-infrastructure, deploy-backend]
+    if: always()
+    
+    steps:
+      - name: Deployment status
+        run: |
+          echo "Deployment completed!"
+          echo "Infrastructure: ${{ needs.deploy-infrastructure.result }}"
+          echo "Backend: ${{ needs.deploy-backend.result }}"

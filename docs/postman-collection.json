@@ -1,0 +1,266 @@
+{
+  "info": {
+    "name": "Open-Lance API",
+    "description": "API collection for Open-Lance P2P Freelance Marketplace",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://api.open-lance.example.com/dev",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"SecurePassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  var jsonData = pm.response.json();",
+                  "  pm.collectionVariables.set('jwt_token', jsonData.data.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"SecurePassword123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tasks",
+      "item": [
+        {
+          "name": "Get All Tasks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/tasks?status=OPEN",
+              "host": ["{{base_url}}"],
+              "path": ["tasks"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "OPEN"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"create_task\",\n  \"data\": {\n    \"title\": \"Разработка логотипа для кофейни\",\n    \"description\": \"Нужен минималистичный логотип в векторе. Обсудим детали в ТГ.\",\n    \"category\": \"Design\",\n    \"budget_estimate\": 5000,\n    \"deadline\": \"2024-12-01\",\n    \"tags\": [\"logo\", \"vector\", \"minimalist\"]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks",
+              "host": ["{{base_url}}"],
+              "path": ["tasks"]
+            }
+          }
+        },
+        {
+          "name": "Get Task by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/tasks/:taskId",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", ":taskId"],
+              "variable": [
+                {
+                  "key": "taskId",
+                  "value": "task-uuid-here"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Apply to Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"apply_to_task\",\n  \"data\": {\n    \"message\": \"Я опытный дизайнер с портфолио из 50+ логотипов. Могу выполнить работу за 3 дня.\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks/:taskId/apply",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", ":taskId", "apply"],
+              "variable": [
+                {
+                  "key": "taskId",
+                  "value": "task-uuid-here"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Match Worker",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"match_worker\",\n  \"data\": {\n    \"worker_id\": \"worker-uuid-here\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks/:taskId/match",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", ":taskId", "match"],
+              "variable": [
+                {
+                  "key": "taskId",
+                  "value": "task-uuid-here"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/users/me",
+              "host": ["{{base_url}}"],
+              "path": ["users", "me"]
+            }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"update_profile\",\n  \"data\": {\n    \"contact_links\": [\n      {\n        \"label\": \"Telegram\",\n        \"url\": \"https://t.me/username\"\n      },\n      {\n        \"label\": \"Portfolio\",\n        \"url\": \"https://behance.net/portfolio\"\n      }\n    ]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/users/me",
+              "host": ["{{base_url}}"],
+              "path": ["users", "me"]
+            }
+          }
+        },
+        {
+          "name": "Add Contact Link",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"add_contact_link\",\n  \"data\": {\n    \"label\": \"Telegram\",\n    \"url\": \"https://t.me/username\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/users/me/contacts",
+              "host": ["{{base_url}}"],
+              "path": ["users", "me", "contacts"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

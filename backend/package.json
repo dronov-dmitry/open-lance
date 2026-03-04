@@ -1,0 +1,38 @@
+{
+  "name": "open-lance-backend",
+  "version": "3.0.0",
+  "description": "Backend Cloudflare Workers for Open-Lance platform with MongoDB Atlas",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "jest",
+    "lint": "eslint .",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:dev": "wrangler deploy --env dev",
+    "deploy:prod": "wrangler deploy --env production",
+    "login": "wrangler login",
+    "whoami": "wrangler whoami",
+    "tail": "wrangler tail"
+  },
+  "keywords": [
+    "cloudflare",
+    "cloudflare-workers",
+    "serverless",
+    "mongodb",
+    "mongodb-atlas",
+    "edge-computing"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.3.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20231218.0",
+    "eslint": "^8.55.0",
+    "jest": "^29.7.0",
+    "wrangler": "^3.22.1"
+  }
+}

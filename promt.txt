@@ -1,0 +1,47 @@
+Freelance-market : open-lance
+
+🚀 Production Specification: Unified Task Marketplace (GitHub Pages + Clerk + MongoDB)
+1. Project Stack
+Frontend: Single Page Application (SPA), hosting on GitHub Pages.
+
+Auth & User Management: Clerk (Free Tier — up to 10k MAU).
+
+Database: MongoDB Atlas (Shared Cluster — Forever Free).
+
+Backend Layer: Serverless (AWS Lambda / Vercel Functions / Cloudflare Workers) to bridge Frontend and DB.
+
+2. Core Concept
+P2P-платформа для поиска задач. Единый профиль для всех: каждый пользователь может создавать задачи и откликаться на них. Платформа не обрабатывает платежи — пользователи договариваются о цене и способе оплаты напрямую.
+
+3. Functional Requirements
+User Profiles (Unified)
+Authentication: Интеграция с Clerk (Google, Email/Password).
+
+Reputation: Два независимых счетчика: Rating_As_Client и Rating_As_Worker.
+
+Contact Info: Список (Array) — до 10 внешних ссылок (Portfolio, LinkedIn, Telegram и т.д.).
+
+Validation: Лимит на количество ссылок (max 10) на уровне API.
+
+Task Management
+Task Data: Заголовок, описание, теги, дедлайн.
+
+Budget: Поле «Ориентировочный бюджет» (для индикации, без транзакций).
+
+Workflow: Публикация -> Отклики -> Выбор исполнителя (Match) -> Завершение -> Взаимный отзыв.
+
+Visibility: Контакты (Links) открываются участникам только после подтверждения «Мэтча».
+
+4. Technical Constraints
+Data Only: Хранение строго текстовых и цифровых данных. Никаких вложений, документов или изображений (только ссылки на них).
+
+CORS: Настройка разрешений для домена *.github.io на стороне API.
+
+Security: Синхронизация данных Clerk с MongoDB через Webhooks или при первом входе (Metadata sync).
+
+5. Deliverables
+Database Schema: Проект коллекций в MongoDB (Users, Tasks, Reviews).
+
+API Integration: Реализация CRUD операций с проверкой авторизации через Clerk JWT.
+
+Documentation: Краткая инструкция по настройке окружения (Environment Variables) и CORS.

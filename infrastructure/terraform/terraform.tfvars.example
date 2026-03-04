@@ -1,0 +1,23 @@
+# AWS Configuration
+aws_region  = "us-east-1"
+environment = "dev"
+project_name = "open-lance"
+
+# MongoDB Atlas Configuration
+mongodb_uri = "mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority"
+mongodb_database = "open-lance"
+
+# Frontend CORS
+allowed_origins = [
+  "https://your-username.github.io"
+]
+
+# JWT Secret (generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+jwt_secret = "your-super-secret-jwt-key-change-this-in-production"
+
+# Lambda Configuration
+lambda_memory_size = 256
+lambda_timeout     = 30
+
+# Security
+enable_waf = false  # Set to true for production

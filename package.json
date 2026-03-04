@@ -1,0 +1,26 @@
+{
+  "name": "open-lance",
+  "version": "1.0.0",
+  "description": "P2P Freelance Marketplace Platform",
+  "main": "index.js",
+  "scripts": {
+    "frontend:dev": "cd frontend && python -m http.server 8080",
+    "frontend:build": "echo 'Frontend is static, no build needed'",
+    "backend:install": "cd backend && npm install",
+    "backend:test": "cd backend && npm test",
+    "docs": "npx @redocly/cli preview-docs docs/openapi.yaml"
+  },
+  "keywords": [
+    "freelance",
+    "marketplace",
+    "serverless",
+    "aws",
+    "lambda",
+    "dynamodb"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@redocly/cli": "^1.0.0"
+  }
+}

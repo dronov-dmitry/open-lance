@@ -1,0 +1,50 @@
+# Cloudflare Workers Configuration for Open-Lance
+# MongoDB Atlas + Cloudflare Workers
+
+name = "open-lance-backend"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+# Worker settings
+workers_dev = true
+route = ""
+zone_id = ""
+
+# Account settings (get from: wrangler whoami)
+account_id = ""
+
+# Environment variables (set using wrangler secret put)
+# These are placeholders - actual values should be set via CLI:
+# wrangler secret put MONGODB_URI
+# wrangler secret put JWT_SECRET
+
+[env.dev]
+name = "open-lance-backend-dev"
+vars = { ENVIRONMENT = "dev" }
+
+[env.production]
+name = "open-lance-backend-prod"
+vars = { ENVIRONMENT = "production" }
+
+# Build configuration
+[build]
+command = ""
+
+[build.upload]
+format = "service-worker"
+
+# Compatibility flags
+compatibility_flags = []
+
+# Limits
+[limits]
+cpu_ms = 50
+
+# Observability
+[observability]
+enabled = true
+
+# For local development
+[dev]
+port = 8787
+local_protocol = "http"
