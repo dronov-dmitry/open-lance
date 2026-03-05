@@ -3,46 +3,18 @@
 
 name = "open-lance-backend"
 main = "src/index.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-09-23"
 
-# Worker settings
+# Enable workers.dev subdomain (automatic subdomain: open-lance-backend.workers.dev)
 workers_dev = true
-route = ""
-zone_id = ""
 
-# Account settings (get from: wrangler whoami)
-account_id = ""
+# Enable Node.js compatibility for crypto, buffer, util, stream modules
+compatibility_flags = ["nodejs_compat"]
 
 # Environment variables (set using wrangler secret put)
 # These are placeholders - actual values should be set via CLI:
-# wrangler secret put MONGODB_URI
-# wrangler secret put JWT_SECRET
-
-[env.dev]
-name = "open-lance-backend-dev"
-vars = { ENVIRONMENT = "dev" }
-
-[env.production]
-name = "open-lance-backend-prod"
-vars = { ENVIRONMENT = "production" }
-
-# Build configuration
-[build]
-command = ""
-
-[build.upload]
-format = "service-worker"
-
-# Compatibility flags
-compatibility_flags = []
-
-# Limits
-[limits]
-cpu_ms = 50
-
-# Observability
-[observability]
-enabled = true
+# echo "your-mongodb-uri" | wrangler secret put MONGODB_URI
+# echo "your-jwt-secret" | wrangler secret put JWT_SECRET
 
 # For local development
 [dev]

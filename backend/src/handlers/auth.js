@@ -9,7 +9,6 @@ const mongoManager = require('../utils/mongoManager');
 const response = require('../utils/response');
 const validation = require('../utils/validation');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 const JWT_EXPIRATION = '7d';
 
 /**
@@ -17,16 +16,27 @@ const JWT_EXPIRATION = '7d';
  */
 async function login(event) {
     try {
+        // Get JWT_SECRET from Cloudflare Workers env
+        const JWT_SECRET = event.env?.JWT_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-this';
+        
         const body = JSON.parse(event.body);
         const { email, password } = body;
 
         // Validate input
         if (!email || !validation.isValidEmail(email)) {
-            return response.error('Invalid email address');
+            return {
+                statusCode: 400,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: 'Invalid email address' })
+            };
         }
 
         if (!password || password.length < 6) {
-            return response.error('Invalid password');
+            return {
+                statusCode: 400,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: 'Invalid password' })
+            };
         }
 
         // TODO: Replace with real authentication
@@ -38,7 +48,11 @@ async function login(event) {
         });
 
         if (!user) {
-            return response.unauthorized('Invalid credentials');
+            return {
+                statusCode: 401,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: 'Invalid credentials' })
+            };
         }
 
         // TODO: Verify password hash
@@ -54,20 +68,29 @@ async function login(event) {
             { expiresIn: JWT_EXPIRATION }
         );
 
-        return response.success({
-            token,
-            user: {
-                user_id: user.user_id,
-                email: user.email,
-                rating_as_client: user.rating_as_client,
-                rating_as_worker: user.rating_as_worker,
-                completed_tasks_client: user.completed_tasks_client,
-                completed_tasks_worker: user.completed_tasks_worker
-            }
-        });
+        // Return response directly without wrapper for auth endpoints
+        return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                token,
+                user: {
+                    user_id: user.user_id,
+                    email: user.email,
+                    rating_as_client: user.rating_as_client,
+                    rating_as_worker: user.rating_as_worker,
+                    completed_tasks_client: user.completed_tasks_client,
+                    completed_tasks_worker: user.completed_tasks_worker
+                }
+            })
+        };
     } catch (error) {
         console.error('Login error:', error);
-        return response.serverError('Login failed', error.message);
+        return {
+            statusCode: 500,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Login failed: ' + error.message })
+        };
     }
 }
 
@@ -76,16 +99,27 @@ async function login(event) {
  */
 async function register(event) {
     try {
+        // Get JWT_SECRET from Cloudflare Workers env
+        const JWT_SECRET = event.env?.JWT_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-this';
+        
         const body = JSON.parse(event.body);
         const { email, password } = body;
 
         // Validate input
         if (!email || !validation.isValidEmail(email)) {
-            return response.error('Invalid email address');
+            return {
+                statusCode: 400,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: 'Invalid email address' })
+            };
         }
 
         if (!password || password.length < 6) {
-            return response.error('Password must be at least 6 characters');
+            return {
+                statusCode: 400,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: 'Password must be at least 6 characters' })
+            };
         }
 
         // Check if user already exists
@@ -94,7 +128,11 @@ async function register(event) {
         });
 
         if (existingUser) {
-            return response.error('User with this email already exists');
+            return {
+                statusCode: 400,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: 'User with this email already exists' })
+            };
         }
 
         // Create new user
@@ -118,20 +156,49 @@ async function register(event) {
         // Store user in MongoDB
         await mongoManager.insertOne('users', newUser);
 
-        return response.success({
-            success: true,
-            message: 'Registration successful. Please login.',
-            user_id: userId
-        }, 201);
+        // Generate JWT token for auto-login after registration
+        const token = jwt.sign(
+            {
+                userId: userId,
+                email: newUser.email
+            },
+            JWT_SECRET,
+            { expiresIn: JWT_EXPIRATION }
+        );
+
+        // Return response directly without wrapper for auth endpoints
+        return {
+            statusCode: 201,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                token,
+                user: {
+                    user_id: userId,
+                    email: newUser.email,
+                    rating_as_client: 0,
+                    rating_as_worker: 0,
+                    completed_tasks_client: 0,
+                    completed_tasks_worker: 0
+                }
+            })
+        };
     } catch (error) {
         console.error('Registration error:', error);
         
         // Handle duplicate email error
         if (error.code === 11000) {
-            return response.error('User with this email already exists');
+            return {
+                statusCode: 400,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: 'User with this email already exists' })
+            };
         }
         
-        return response.serverError('Registration failed', error.message);
+        return {
+            statusCode: 500,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Registration failed: ' + error.message })
+        };
     }
 }
 

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Open-Lance - P2P Freelance Marketplace">
     <title>Open-Lance - Freelance Marketplace</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -19,6 +20,7 @@
                 <a href="#" data-page="tasks">Задачи</a>
                 <a href="#" data-page="my-tasks">Мои задачи</a>
                 <a href="#" data-page="profile">Профиль</a>
+                <button id="createTaskBtn" class="btn btn-success" style="display: none; margin-right: 10px;">+ Создать задачу</button>
                 <button id="authBtn" class="btn btn-primary">Войти</button>
             </div>
         </div>
@@ -77,6 +79,37 @@
         </div>
     </div>
 
+    <!-- Create Task Modal -->
+    <div id="createTaskModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <span class="close">&times;</span>
+            <h2>Создать задачу</h2>
+            <form id="createTaskForm">
+                <div class="form-group">
+                    <label for="taskTitle">Название задачи*</label>
+                    <input type="text" id="taskTitle" required placeholder="Например: Разработать лендинг">
+                </div>
+                <div class="form-group">
+                    <label for="taskDescription">Описание*</label>
+                    <textarea id="taskDescription" required rows="5" placeholder="Подробно опишите задачу..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="taskBudget">Бюджет (₽)*</label>
+                    <input type="number" id="taskBudget" required min="0" placeholder="5000">
+                </div>
+                <div class="form-group">
+                    <label for="taskDeadline">Срок выполнения*</label>
+                    <input type="date" id="taskDeadline" required>
+                </div>
+                <div class="form-group">
+                    <label for="taskSkills">Требуемые навыки (через запятую)</label>
+                    <input type="text" id="taskSkills" placeholder="JavaScript, React, Node.js">
+                </div>
+                <button type="submit" class="btn btn-primary">Создать задачу</button>
+            </form>
+        </div>
+    </div>
+
     <!-- Toast Notifications -->
     <div id="toastContainer"></div>
 
@@ -88,6 +121,7 @@
     <script src="js/components/tasks.js"></script>
     <script src="js/components/profile.js"></script>
     <script src="js/components/home.js"></script>
+    <script src="js/createTask.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

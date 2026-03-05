@@ -99,10 +99,9 @@ check_prerequisites() {
 check_cloudflare_auth() {
     print_header "Checking Cloudflare Authentication"
     
-    if wrangler whoami &> /dev/null; then
-        print_success "Cloudflare authentication configured"
-        wrangler whoami
-    else
+    WHOAMI_OUTPUT=$(wrangler whoami 2>&1)
+    
+    if echo "$WHOAMI_OUTPUT" | grep -q "You are not authenticated\|not logged in"; then
         print_warning "Cloudflare authentication not configured"
         echo ""
         echo "Please authenticate with Cloudflare:"
@@ -111,10 +110,19 @@ check_cloudflare_auth() {
         read -p "Run 'wrangler login' now? (y/n): " run_login
         if [[ $run_login == "y" ]]; then
             wrangler login
+            # Verify authentication worked
+            WHOAMI_CHECK=$(wrangler whoami 2>&1)
+            if echo "$WHOAMI_CHECK" | grep -q "You are not authenticated"; then
+                print_error "Authentication failed. Please run 'wrangler login' manually."
+                exit 1
+            fi
         else
             print_error "Cloudflare authentication required"
             exit 1
         fi
+    else
+        print_success "Cloudflare authentication configured"
+        echo "$WHOAMI_OUTPUT"
     fi
     
     echo ""
@@ -221,21 +229,61 @@ deploy_backend() {
     print_info "Setting Cloudflare Workers secrets..."
     
     # MongoDB URI
-    echo "$MONGODB_URI" | wrangler secret put MONGODB_URI --env $ENVIRONMENT
+    print_info "Setting MONGODB_URI secret..."
+    if ! echo "$MONGODB_URI" | wrangler secret put MONGODB_URI --env $ENVIRONMENT; then
+        print_error "Failed to set MONGODB_URI secret"
+        exit 1
+    fi
     
     # JWT Secret
-    echo "$JWT_SECRET" | wrangler secret put JWT_SECRET --env $ENVIRONMENT
+    print_info "Setting JWT_SECRET secret..."
+    if ! echo "$JWT_SECRET" | wrangler secret put JWT_SECRET --env $ENVIRONMENT; then
+        print_error "Failed to set JWT_SECRET secret"
+        exit 1
+    fi
     
     # Deploy with Wrangler
     print_info "Deploying Cloudflare Worker..."
-    wrangler deploy --env $ENVIRONMENT
+    DEPLOY_OUTPUT=$(wrangler deploy --env $ENVIRONMENT 2>&1)
+    echo "$DEPLOY_OUTPUT"
     
-    # Get Worker URL
-    API_URL="https://open-lance-backend-$ENVIRONMENT.<your-subdomain>.workers.dev"
+    # Check for workers.dev subdomain registration error
+    if echo "$DEPLOY_OUTPUT" | grep -q "register a workers.dev subdomain"; then
+        echo ""
+        echo "================================================================================" 
+        echo "ERROR: Workers.dev Subdomain Not Registered!"
+        echo "================================================================================"
+        echo ""
+        echo "You need to register a workers.dev subdomain ONCE before deploying."
+        echo ""
+        echo "Steps:"
+        echo "1. Open this link in your browser:"
+        echo "   https://dash.cloudflare.com/YOUR_ACCOUNT_ID/workers/onboarding"
+        echo "   (Replace YOUR_ACCOUNT_ID with your actual Cloudflare Account ID)"
+        echo ""
+        echo "2. Choose a subdomain name (e.g., myapp.workers.dev)"
+        echo ""
+        echo "3. Click 'Register'"
+        echo ""
+        echo "4. Run this script again"
+        echo ""
+        echo "This is a ONE-TIME step for your Cloudflare account."
+        echo "================================================================================"
+        exit 1
+    fi
     
-    print_success "Backend deployed successfully"
-    print_info "Worker URL: $API_URL"
-    print_warning "Update your worker URL in Cloudflare dashboard if needed"
+    # Extract Worker URL from deploy output
+    if echo "$DEPLOY_OUTPUT" | grep -oP "https://[a-zA-Z0-9-]+\.workers\.dev" > /dev/null; then
+        API_URL=$(echo "$DEPLOY_OUTPUT" | grep -oP "https://[a-zA-Z0-9-]+\.workers\.dev" | head -n 1)
+        print_success "Backend deployed successfully"
+        print_info "Worker URL: $API_URL"
+    else
+        API_URL="https://open-lance-backend-$ENVIRONMENT.<your-subdomain>.workers.dev"
+        print_success "Backend deployment completed"
+        print_warning "Could not automatically detect Worker URL"
+        print_warning "Please check Cloudflare dashboard: https://dash.cloudflare.com/"
+        print_info "Expected URL format: $API_URL"
+    fi
     
     # Save to config
     cat >> "$PROJECT_ROOT/.deploy-config" <<EOF
@@ -256,7 +304,7 @@ configure_frontend() {
     # Update frontend config
     print_info "Updating frontend configuration..."
     
-    cat > "$PROJECT_ROOT/frontend/js/config.js" <<EOF
+    cat > "$PROJECT_ROOT/docs/js/config.js" <<EOF
 // Configuration for Open-Lance v3.0 (Cloudflare Workers + MongoDB Atlas)
 const CONFIG = {
     // Environment
@@ -349,7 +397,7 @@ print_summary() {
     echo "     -d '{\"email\":\"test@example.com\",\"password\":\"Test123!\"}'"
     echo ""
     echo "2. Test frontend locally:"
-    echo "   cd frontend"
+    echo "   cd docs"
     echo "   python -m http.server 8080"
     echo "   Open http://localhost:8080"
     echo ""
@@ -361,7 +409,7 @@ print_summary() {
     echo "   git add ."
     echo "   git commit -m 'Deploy Open-Lance v3.0'"
     echo "   git push origin main"
-    echo "   Or use: wrangler pages deploy frontend"
+    echo "   Or use: wrangler pages deploy docs"
     echo ""
     echo "5. Monitor:"
     echo "   Cloudflare Dashboard: https://dash.cloudflare.com/"

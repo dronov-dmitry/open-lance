@@ -10,10 +10,11 @@ class MongoManager {
         this.client = null;
         this.db = null;
         this.isConnected = false;
+        this.env = null; // Store env for future connect() calls
         
-        // MongoDB Atlas connection string from environment
-        this.connectionString = process.env.MONGODB_URI || process.env.MONGODB_CONNECTION_STRING;
-        this.dbName = process.env.MONGODB_DATABASE || 'open-lance';
+        // MongoDB Atlas connection string (will be set in connect())
+        this.connectionString = null;
+        this.dbName = 'open-lance';
         
         // Collections
         this.collections = {
@@ -25,17 +26,42 @@ class MongoManager {
         // Retry settings
         this.maxRetries = 3;
         this.retryDelay = 1000; // ms
-
-        if (!this.connectionString) {
-            console.warn('WARNING: MongoDB connection string not found in environment variables!');
-            console.warn('Set MONGODB_URI or MONGODB_CONNECTION_STRING');
-        }
     }
 
     /**
      * Initialize MongoDB connection
+     * @param {Object} env - Cloudflare Workers environment variables
      */
-    async connect() {
+    async connect(env = null) {
+        // Store env if provided
+        if (env && env.MONGODB_URI) {
+            this.env = env;
+        }
+        
+        // Use stored env if available
+        const currentEnv = env || this.env || {};
+        
+        // Debug logging
+        console.log('mongoManager.connect called');
+        console.log('env type:', typeof currentEnv);
+        console.log('env keys:', currentEnv ? Object.keys(currentEnv) : 'null');
+        console.log('env.MONGODB_URI exists:', !!(currentEnv && currentEnv.MONGODB_URI));
+        
+        // Set connection string from env (Cloudflare Workers way)
+        if (currentEnv && currentEnv.MONGODB_URI) {
+            this.connectionString = currentEnv.MONGODB_URI;
+            console.log('Using MONGODB_URI from env (length:', currentEnv.MONGODB_URI.length, ')');
+        } else if (typeof process !== 'undefined' && process.env) {
+            // Fallback to process.env for local development
+            this.connectionString = process.env.MONGODB_URI || process.env.MONGODB_CONNECTION_STRING;
+            console.log('Using MONGODB_URI from process.env');
+        }
+
+        if (!this.connectionString) {
+            console.error('No connection string found!');
+            throw new Error('MongoDB connection string not found! Set MONGODB_URI secret in Cloudflare Workers.');
+        }
+
         if (this.isConnected && this.client) {
             return this.db;
         }
@@ -44,12 +70,14 @@ class MongoManager {
             console.log('Connecting to MongoDB Atlas...');
             
             this.client = new MongoClient(this.connectionString, {
-                maxPoolSize: 10,
-                minPoolSize: 2,
+                maxPoolSize: 5,
+                minPoolSize: 1,
                 retryWrites: true,
                 retryReads: true,
-                serverSelectionTimeoutMS: 5000,
-                socketTimeoutMS: 45000,
+                connectTimeoutMS: 10000,      // 10 seconds to connect
+                serverSelectionTimeoutMS: 10000, // 10 seconds to select server
+                socketTimeoutMS: 10000,       // 10 seconds socket timeout
+                maxIdleTimeMS: 30000,         // Close idle connections after 30s
             });
 
             await this.client.connect();
@@ -127,9 +155,25 @@ class MongoManager {
      * Find one document
      */
     async findOne(collectionName, query, options = {}) {
-        await this.connect();
-        const collection = this.getCollection(collectionName);
-        return await collection.findOne(query, options);
+        try {
+            await this.connect();
+            const collection = this.getCollection(collectionName);
+            return await collection.findOne(query, options);
+        } catch (error) {
+            // If connection error, try to reconnect once
+            if (error.message && error.message.includes('timed out')) {
+                console.log('MongoDB connection timeout, reconnecting...');
+                this.isConnected = false;
+                if (this.client) {
+                    await this.client.close().catch(() => {});
+                    this.client = null;
+                }
+                await this.connect();
+                const collection = this.getCollection(collectionName);
+                return await collection.findOne(query, options);
+            }
+            throw error;
+        }
     }
 
     /**
@@ -145,14 +189,35 @@ class MongoManager {
      * Insert one document
      */
     async insertOne(collectionName, document) {
-        await this.connect();
-        const collection = this.getCollection(collectionName);
-        const result = await collection.insertOne(document);
-        return { 
-            success: true, 
-            insertedId: result.insertedId,
-            document: { _id: result.insertedId, ...document }
-        };
+        try {
+            await this.connect();
+            const collection = this.getCollection(collectionName);
+            const result = await collection.insertOne(document);
+            return { 
+                success: true, 
+                insertedId: result.insertedId,
+                document: { _id: result.insertedId, ...document }
+            };
+        } catch (error) {
+            // If connection error, try to reconnect once
+            if (error.message && error.message.includes('timed out')) {
+                console.log('MongoDB connection timeout, reconnecting...');
+                this.isConnected = false;
+                if (this.client) {
+                    await this.client.close().catch(() => {});
+                    this.client = null;
+                }
+                await this.connect();
+                const collection = this.getCollection(collectionName);
+                const result = await collection.insertOne(document);
+                return { 
+                    success: true, 
+                    insertedId: result.insertedId,
+                    document: { _id: result.insertedId, ...document }
+                };
+            }
+            throw error;
+        }
     }
 
     /**

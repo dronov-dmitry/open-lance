@@ -1,15 +1,15 @@
-// Configuration for Open-Lance v3.0 (Cloudflare Workers + MongoDB Atlas)
+﻿// Configuration for Open-Lance v3.0 (Cloudflare Workers + MongoDB Atlas)
 const CONFIG = {
     // Environment
-    ENV: 'dev',
+    ENV: '',
     
     // API Endpoints
     API: {
         development: {
-            baseURL: 'https://open-lance-backend-dev.<your-subdomain>.workers.dev'
+            baseURL: 'https://open-lance-backend.<your-subdomain>.workers.dev'
         },
         production: {
-            baseURL: 'https://open-lance-backend-dev.<your-subdomain>.workers.dev'
+            baseURL: 'https://open-lance-backend.<your-subdomain>.workers.dev'
         }
     },
     

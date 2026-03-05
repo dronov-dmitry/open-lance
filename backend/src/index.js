@@ -7,6 +7,7 @@ const mongoManager = require('./utils/mongoManager');
 const authHandlers = require('./handlers/auth');
 const taskHandlers = require('./handlers/tasks');
 const userHandlers = require('./handlers/users');
+const applicationHandlers = require('./handlers/applications');
 const { verifyToken } = require('./handlers/authorizer');
 const response = require('./utils/response');
 
@@ -71,9 +72,29 @@ async function handleRequest(request, env) {
         return handleOptions();
     }
 
+    // Health check (no auth required, no MongoDB connection)
+    if (path === '/health' && method === 'GET') {
+        return addCorsHeaders(new Response(JSON.stringify({
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+            service: 'open-lance-backend',
+            version: '3.0',
+            env: {
+                hasMongoUri: !!(env && env.MONGODB_URI),
+                hasJwtSecret: !!(env && env.JWT_SECRET),
+                mongoUriLength: env && env.MONGODB_URI ? env.MONGODB_URI.length : 0,
+                envType: typeof env,
+                envKeys: env ? Object.keys(env) : []
+            }
+        }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+        }));
+    }
+
     try {
         // Initialize MongoDB connection
-        await mongoManager.connect();
+        await mongoManager.connect(env);
 
         // Parse body for POST/PUT/PATCH requests
         let body = null;
@@ -91,7 +112,8 @@ async function handleRequest(request, env) {
             body: body ? JSON.stringify(body) : null,
             requestContext: {
                 authorizer: null
-            }
+            },
+            env: env // Pass Cloudflare Workers env to handlers
         };
 
         // Authentication routes (no auth required)
@@ -228,6 +250,33 @@ async function handleRequest(request, env) {
         if (path.match(/^\/users\/me\/contacts\/[^/]+$/) && method === 'DELETE') {
             event.pathParameters.linkId = path.split('/')[4];
             const result = await userHandlers.removeContactLink(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        // Application routes
+        if (path === '/applications/me' && method === 'GET') {
+            const result = await applicationHandlers.getMyApplications(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        if (path.match(/^\/applications\/task\/[^/]+$/) && method === 'GET') {
+            event.pathParameters.taskId = path.split('/')[3];
+            const result = await applicationHandlers.getTaskApplications(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        if (path.match(/^\/applications\/[^/]+$/) && method === 'PUT') {
+            event.pathParameters.id = path.split('/')[2];
+            const result = await applicationHandlers.updateApplicationStatus(event);
             return addCorsHeaders(new Response(result.body, {
                 status: result.statusCode,
                 headers: { 'Content-Type': 'application/json' }

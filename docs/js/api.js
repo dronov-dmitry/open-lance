@@ -23,6 +23,9 @@ class APIService {
 
     // Make HTTP request with retry logic
     async request(endpoint, options = {}, attempt = 1) {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] [API] Request attempt ${attempt} to: ${endpoint}`);
+        
         const token = this.getAuthToken();
         
         const headers = {
@@ -40,7 +43,22 @@ class APIService {
         };
 
         try {
-            const response = await fetch(`${this.baseURL}${endpoint}`, config);
+            const fetchTime = new Date().toISOString();
+            console.log(`[${fetchTime}] [API] Fetching: ${this.baseURL}${endpoint}`, config);
+            
+            // Add timeout wrapper (15 seconds)
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            
+            try {
+                const response = await fetch(`${this.baseURL}${endpoint}`, {
+                    ...config,
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                
+                const responseTime = new Date().toISOString();
+                console.log(`[${responseTime}] [API] Response received:`, { status: response.status, ok: response.ok });
 
             // Handle different status codes
             if (response.status === 401) {
@@ -71,11 +89,55 @@ class APIService {
             }
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.message || 'Request failed');
+                const errorStartTime = new Date().toISOString();
+                console.log(`[${errorStartTime}] [API] Response not OK, reading error...`);
+                const errorText = await response.text();
+                const errorReadTime = new Date().toISOString();
+                console.error(`[${errorReadTime}] [API] Error response status:`, response.status);
+                console.error(`[${errorReadTime}] [API] Error response body:`, errorText);
+                try {
+                    const errorData = JSON.parse(errorText);
+                    console.log(`[${errorReadTime}] [API] Parsed error data:`, errorData);
+                    
+                    // Handle multiple formats:
+                    // 1. {error: "message"}  <- New simple format
+                    // 2. {success: false, error: {message: "..."}}  <- Old wrapped format
+                    // 3. {message: "..."}  <- Direct message
+                    let errorMessage;
+                    if (typeof errorData.error === 'string') {
+                        errorMessage = errorData.error;
+                    } else if (errorData.error?.message) {
+                        errorMessage = errorData.error.message;
+                    } else if (errorData.message) {
+                        errorMessage = errorData.message;
+                    } else {
+                        errorMessage = 'Request failed';
+                    }
+                    
+                    console.log('[API] Throwing error:', errorMessage);
+                    throw new Error(errorMessage);
+                } catch (e) {
+                    console.log('[API] Error parsing/throwing:', e);
+                    if (e.message && e.message !== errorText) {
+                        throw e; // Re-throw if it's our formatted error
+                    }
+                    throw new Error('Request failed');
+                }
             }
 
-            return await response.json();
+                console.log('[API] Response OK, parsing JSON...');
+                const data = await response.json();
+                console.log('[API] Parsed data:', data);
+                return data;
+            } catch (fetchError) {
+                clearTimeout(timeoutId);
+                if (fetchError.name === 'AbortError') {
+                    const timeoutTime = new Date().toISOString();
+                    console.error(`[${timeoutTime}] [API] Request timeout (15s) for:`, endpoint);
+                    throw new Error('Запрос превысил время ожидания. Пожалуйста, попробуйте позже.');
+                }
+                throw fetchError;
+            }
         } catch (error) {
             console.error('API Request Error:', error);
             throw error;
@@ -111,6 +173,22 @@ class APIService {
     // DELETE request
     async delete(endpoint) {
         return this.request(endpoint, { method: 'DELETE' });
+    }
+
+    // ===== Auth Endpoints =====
+
+    async register(email, password) {
+        return this.post('/auth/register', {
+            email,
+            password
+        });
+    }
+
+    async login(email, password) {
+        return this.post('/auth/login', {
+            email,
+            password
+        });
     }
 
     // ===== Task Endpoints =====
@@ -217,4 +295,15 @@ class APIService {
 }
 
 // Create global API instance
-window.api = new APIService();
+try {
+    window.api = new APIService();
+    console.log('[API] APIService initialized successfully', window.api);
+} catch (error) {
+    console.error('[API] Failed to initialize APIService:', error);
+    console.error('[API] APP_CONFIG:', window.APP_CONFIG);
+    // Create a dummy API to prevent crashes
+    window.api = {
+        getTasks: () => Promise.reject(new Error('API not initialized')),
+        getMyApplications: () => Promise.reject(new Error('API not initialized'))
+    };
+}

@@ -1,860 +1,610 @@
-# Open-Lance Deployment Guide
+# 📦 Инструкция по развертыванию Open-Lance
 
-Complete step-by-step guide for deploying the Open-Lance platform with MongoDB Atlas, AWS Lambda, and GitHub Pages.
+Полное руководство по развертыванию платформы от А до Я.
 
-## Table of Contents
+## 📋 Содержание
 
-1. [Prerequisites](#prerequisites)
-   - [Required Tools](#required-tools)
-   - [AWS Account Setup](#aws-account-setup)
-   - [AWS Requirements](#aws-requirements)
-   - [GitHub Requirements](#github-requirements)
-2. [Architecture Overview](#architecture-overview)
-3. [Step 1: Prepare AWS Accounts](#step-1-prepare-aws-accounts)
-4. [Step 2: Deploy Infrastructure](#step-2-deploy-infrastructure)
-5. [Step 3: Deploy Backend](#step-3-deploy-backend)
-6. [Step 4: Deploy Frontend](#step-4-deploy-frontend)
-7. [Step 5: Testing](#step-5-testing)
-8. [Troubleshooting](#troubleshooting)
-9. [Production Checklist](#production-checklist)
-10. [Cost Optimization](#cost-optimization)
-11. [Support & Resources](#support--resources)
-12. [Frequently Asked Questions (FAQ)](#frequently-asked-questions-faq)
+1. [Требования](#-требования)
+2. [Шаг 1: MongoDB Atlas](#-шаг-1-mongodb-atlas)
+3. [Шаг 2: Cloudflare](#-шаг-2-cloudflare)
+4. [Шаг 3: Установка зависимостей](#-шаг-3-установка-зависимостей)
+5. [Шаг 4: Деплой backend](#-шаг-4-деплой-backend)
+6. [Шаг 5: Настройка frontend](#-шаг-5-настройка-frontend)
+7. [Шаг 6: GitHub Pages](#-шаг-6-github-pages)
+8. [Решение проблем](#-решение-проблем)
 
 ---
 
-## Prerequisites
+## ⚙️ Требования
 
-### Required Tools
+- **Node.js** >= 18.x ([скачать](https://nodejs.org/))
+- **Git** ([скачать](https://git-scm.com/))
+- **MongoDB Atlas** аккаунт (бесплатный)
+- **Cloudflare** аккаунт (бесплатный)
+- **GitHub** аккаунт (для frontend хостинга)
 
-- **Node.js** >= 18.x
-  ```bash
-  node --version
-  ```
-
-- **npm** >= 9.x
-  ```bash
-  npm --version
-  ```
-
-- **Terraform** >= 1.0
-  ```bash
-  terraform --version
-  ```
-
-- **AWS CLI** >= 2.x
-  ```bash
-  aws --version
-  ```
-
-- **Serverless Framework**
-  ```bash
-  npm install -g serverless
-  serverless --version
-  ```
-
-- **Git**
-  ```bash
-  git --version
-  ```
-
-### AWS Account Setup
-
-#### Creating AWS Account
-
-If you don't have an AWS account yet, follow these steps:
-
-1. **Go to AWS Website**
-   - Navigate to [https://aws.amazon.com/](https://aws.amazon.com/)
-   - Click **"Create an AWS Account"** button (top right)
-
-2. **Enter Account Information**
-   - Email address: Enter your email (will be the root account email)
-   - AWS account name: Choose a name for your account (e.g., "OpenLance-Primary")
-   - Click **"Verify email address"**
-   - Enter the verification code sent to your email
-
-3. **Set Root User Password**
-   - Create a strong password (minimum 8 characters)
-   - Confirm the password
-   - Click **"Continue"**
-
-4. **Choose AWS Support Plan**
-   - For testing: Select **"Basic support - Free"**
-   - For production: Consider **"Developer"** ($29/month) or **"Business"** ($100/month)
-   - Click **"Complete sign up"**
-
-5. **Add Contact Information**
-   - Account type: Choose **"Personal"** or **"Business"**
-   - Full name, phone number, country, address
-   - Read and accept AWS Customer Agreement
-   - Click **"Continue"**
-
-6. **Add Payment Information**
-   - Enter credit/debit card details
-   - AWS will charge $1 for verification (refunded)
-   - Click **"Verify and Add"**
-
-7. **Confirm Identity**
-   - Choose verification method: **Text message (SMS)** or **Voice call**
-   - Enter security code received
-   - Click **"Continue"**
-
-8. **Wait for Account Activation**
-   - Usually takes 1-5 minutes
-   - You'll receive email: "Welcome to Amazon Web Services"
-   - Click **"Sign In to the Console"**
-
-#### Choosing AWS Region
-
-AWS Region determines where your resources will be physically located. This affects:
-- **Latency**: Choose region closest to your users
-- **Pricing**: Prices vary by region
-- **Compliance**: Some regions have special compliance features
-
-**Available Regions:**
-
-| Region Code | Region Name | Location | Notes |
-|------------|-------------|----------|-------|
-| `us-east-1` | US East (N. Virginia) | USA | **Most popular**, lowest prices, most services |
-| `us-east-2` | US East (Ohio) | USA | Good alternative to us-east-1 |
-| `us-west-1` | US West (N. California) | USA | West coast USA |
-| `us-west-2` | US West (Oregon) | USA | West coast USA |
-| `eu-west-1` | EU (Ireland) | Europe | Most popular EU region |
-| `eu-central-1` | EU (Frankfurt) | Europe | Good for Germany/Central EU |
-| `ap-southeast-1` | Asia Pacific (Singapore) | Asia | Good for Southeast Asia |
-| `ap-northeast-1` | Asia Pacific (Tokyo) | Asia | Good for Japan |
-
-**Recommendation:**
-- **For USA users**: `us-east-1` (cheapest, most reliable)
-- **For Europe users**: `eu-west-1` or `eu-central-1`
-- **For Asia users**: `ap-southeast-1` or `ap-northeast-1`
-
-#### Creating IAM User and Access Keys
-
-**⚠️ IMPORTANT:** Never use root account for deployment! Create IAM user instead.
-
-1. **Sign in to AWS Console**
-   - Go to [https://console.aws.amazon.com/](https://console.aws.amazon.com/)
-   - Sign in with your root account email and password
-
-2. **Navigate to IAM**
-   - In the search bar, type "IAM"
-   - Click **"IAM"** service
-
-3. **Create User**
-   - Click **"Users"** in left sidebar
-   - Click **"Create user"** button
-   - User name: `open-lance-deployer`
-   - Click **"Next"**
-
-4. **Set Permissions**
-   - Select **"Attach policies directly"**
-   - Search and select:
-    - ✅ `AdministratorAccess` (for full deployment access)
-    - Or for more security, select specific policies:
-      - `AWSLambda_FullAccess`
-      - `AmazonAPIGatewayAdministrator`
-      - `IAMFullAccess` (for Cognito user pool)
-       - `AmazonCognitoPowerUser`
-       - `IAMFullAccess`
-       - `CloudWatchFullAccess`
-   - Click **"Next"**
-   - Click **"Create user"**
-
-5. **Create Access Keys**
-   - Click on the created user (`open-lance-deployer`)
-   - Go to **"Security credentials"** tab
-   - Scroll to **"Access keys"**
-   - Click **"Create access key"**
-   - Choose use case: **"Command Line Interface (CLI)"**
-   - Check confirmation checkbox
-   - Click **"Next"**
-   - Description: "Open-Lance Deployment" (optional)
-   - Click **"Create access key"**
-
-6. **Save Access Keys**
-   - **⚠️ CRITICAL:** Save these immediately! You can't see them again.
-   - **Access Key ID**: `AKIAIOSFODNN7EXAMPLE` (save this)
-   - **Secret Access Key**: `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` (save this)
-   - Click **"Download .csv file"** (recommended)
-   - Store in a secure location (password manager)
-   - Click **"Done"**
-
-#### Setting AWS Region in Configuration
-
-The region you choose will be used in multiple places:
-
-1. **During AWS CLI Configuration** (Step 1.1):
-   ```bash
-   aws configure --profile primary
-   # Default region: us-east-1  ← Your chosen region
-   ```
-
-2. **In Terraform Variables** (Step 2.2):
-   ```hcl
-   aws_region = "us-east-1"  ← Your chosen region
-   ```
-
-3. **In Backend Environment Variables** (Step 3.3):
-   ```bash
-   AWS_REGION=us-east-1  ← Your chosen region
-   ```
-
-4. **In Frontend Configuration** (Step 4.2):
-   ```javascript
-   region: 'us-east-1'  ← Your chosen region
-   ```
-
-**Pro Tip:** All AWS resources (Lambda, API Gateway, Cognito) must be in the same region!
+**Общее время: ~20-30 минут**
 
 ---
 
-**📖 For more detailed information about AWS regions, pricing, and selection tips:**  
-**→ See [AWS_REGION_GUIDE.md](./AWS_REGION_GUIDE.md)** - Complete reference guide with latency tests and pricing comparisons
+## 🗄️ Шаг 1: MongoDB Atlas
 
----
+### 1.1. Регистрация
 
-### AWS Requirements
+1. Откройте [mongodb.com/cloud/atlas/register](https://www.mongodb.com/cloud/atlas/register)
+2. Зарегистрируйтесь через Google/GitHub (быстрее) или email
+3. Подтвердите email
 
-- **1 AWS Account** (for Lambda and API Gateway)
-  
-- **IAM Permissions**:
-  - Administrator access or equivalent permissions for:
-    - Lambda
-    - API Gateway
-    - IAM
-    - CloudWatch
-    - S3 (optional, for Terraform state)
+### 1.2. Создание кластера
 
-### MongoDB Atlas Requirements
+1. Нажмите **"Create"** (Создать)
+2. Выберите **"Shared"** (бесплатный M0)
+3. Провайдер: **AWS** (рекомендуется)
+4. Регион: ближайший к вам (например, Frankfurt для Европы)
+5. Кластер Name: `open-lance` (или любое имя)
+6. Нажмите **"Create Cluster"**
+7. Подождите 3-5 минут
 
-- **MongoDB Atlas Account** (Free tier available)
-- **M0 Cluster** (512 MB free storage)
-- Network access configured
-- Database user created
+### 1.3. Создание пользователя БД
 
-**Setup Guide**: See [MONGODB_ATLAS_SETUP.md](./MONGODB_ATLAS_SETUP.md) for complete instructions
+1. Слева: **"Database Access"**
+2. **"Add New Database User"**
+3. **Username**: `open-lance-admin` (или другое)
+4. **Password**: Придумайте надежный пароль
+   - ⚠️ **ЗАПИШИТЕ ПАРОЛЬ!** MongoDB не покажет его снова
+   - Пример: `MySecure123!@#`
+5. **Privileges**: "Read and write to any database"
+6. **"Add User"**
 
-### GitHub Requirements
+💡 **Забыли пароль?**
+1. Database Access → найдите пользователя
+2. **Edit** → **Edit Password**
+3. Введите новый пароль → **Update User**
 
-- GitHub account
-- Repository with GitHub Pages enabled
+### 1.4. Настройка сети
 
----
+1. Слева: **"Network Access"**
+2. **"Add IP Address"**
+3. **"Allow Access from Anywhere"** (`0.0.0.0/0`)
+4. **"Confirm"**
 
-## Architecture Overview
+⚠️ Это нужно для Cloudflare Workers (разные IP адреса)
+
+### 1.5. Получение Connection URI
+
+1. Слева: **"Database"**
+2. Найдите кластер → **"Connect"**
+3. **"Connect your application"**
+4. **Driver**: Node.js, **Version**: 6.0 or later
+5. Скопируйте строку:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                         Frontend                             │
-│                    (GitHub Pages)                            │
-│                  Static HTML/CSS/JS                          │
-└────────────────────────┬────────────────────────────────────┘
-                         │ HTTPS
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                     API Gateway                              │
-│                   JWT Authorizer                             │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    AWS Lambda                                │
-│                (Serverless Backend)                          │
-│                  Node.js Handlers                            │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   MongoDB Atlas                              │
-│              (Cloud Database - Free Tier)                    │
-│  Collections:                                                │
-│  - users (profiles, authentication)                          │
-│  - tasks (freelance tasks)                                   │
-│  - applications (worker applications)                        │
-└─────────────────────────────────────────────────────────────┘
+mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority
 ```
 
----
+**ЗАМЕНИТЕ:**
+- `<username>` → ваш username (например: `open-lance-admin`)
+- `<password>` → ваш пароль (из шага 1.3)
+- **Удалите** скобки `<` и `>`
 
-## Step 0: Setup MongoDB Atlas
+**Пример правильной строки:**
+```
+mongodb+srv://open-lance-admin:MySecure123@cluster0.abc123.mongodb.net/?retryWrites=true&w=majority
+```
 
-**⚠️ DO THIS FIRST!**
+💾 **Сохраните эту строку** - она понадобится для деплоя!
 
-Before deploying AWS infrastructure, set up MongoDB Atlas:
+### 1.6. Автоматическая настройка БД (опционально)
 
-1. Go to [MONGODB_ATLAS_SETUP.md](./MONGODB_ATLAS_SETUP.md)
-2. Follow the complete guide to:
-   - Create MongoDB Atlas account
-   - Create M0 (Free) cluster
-   - Configure database user
-   - Configure network access
-   - Get connection string
-
-**You'll need the MongoDB connection string for the next steps.**
-
----
-
-## Step 1: Prepare AWS Account
-
-### 1.1 Configure AWS CLI
+Создайте коллекции и индексы автоматически:
 
 ```bash
-aws configure
-# AWS Access Key ID: [your-key]
-# AWS Secret Access Key: [your-secret]
-# Default region: us-east-1
-# Default output format: json
+cd backend
+npm install
+node ../scripts/setup-mongodb.js
 ```
 
-### 1.2 Verify Access
+Введите ваш MongoDB Connection URI и имя БД (`open-lance`)
 
-```bash
-aws sts get-caller-identity
-```
-
-Note the Account ID - you may need it later.
+Скрипт создаст:
+- ✅ Коллекции: `users`, `tasks`, `applications`
+- ✅ Индексы для быстрого поиска
+- ✅ (Опционально) Тестовые данные
 
 ---
 
-## Step 2: Deploy Infrastructure
+## ☁️ Шаг 2: Cloudflare
 
-### 2.1 Navigate to Infrastructure Directory
+### 2.1. Регистрация
+
+1. Откройте [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up)
+2. Введите email и пароль (или через Google)
+3. Подтвердите email
+
+### 2.2. Регистрация Workers.dev Subdomain
+
+⚠️ **ОБЯЗАТЕЛЬНЫЙ ШАГ** перед деплоем!
+
+1. Войдите в [Cloudflare Dashboard](https://dash.cloudflare.com/)
+2. Откройте **Workers & Pages**
+3. Если это ваш первый Worker, вас попросят зарегистрировать subdomain
+4. Придумайте уникальное имя (например: `myapp`)
+5. Нажмите **"Register"**
+
+Ваши Workers будут доступны по адресу:
+```
+worker-name.myapp.workers.dev
+```
+
+### 2.3. Установка Wrangler CLI
 
 ```bash
-cd infrastructure/terraform
+npm install -g wrangler
 ```
 
-### 2.2 Create Terraform Variables File
+Проверка:
+```bash
+wrangler --version
+```
+
+### 2.4. Аутентификация
 
 ```bash
-cp terraform.tfvars.example terraform.tfvars
+wrangler login
 ```
 
-Edit `terraform.tfvars`:
+Откроется браузер → нажмите **"Allow"**
 
-```hcl
-aws_region   = "us-east-1"
-environment  = "dev"
-project_name = "open-lance"
-
-# MongoDB Atlas Connection (from Step 0)
-mongodb_uri      = "mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority"
-mongodb_database = "open-lance"
-
-# Frontend CORS
-allowed_origins = [
-  "https://your-username.github.io"
-]
-
-# JWT Secret
-jwt_secret = "generate-secure-random-string-here"
-
-# Lambda Configuration
-lambda_memory_size = 256
-lambda_timeout     = 30
-
-# Security
-enable_waf = false  # Set to true for production
+Проверка:
+```bash
+wrangler whoami
 ```
 
-**Generate secure JWT secret:**
+Должен показать ваш email и Account ID.
+
+---
+
+## 📦 Шаг 3: Установка зависимостей
+
+Перейдите в папку проекта:
+
+```bash
+cd d:\MEGAsync\06_All\14_JS\App_13_open-lance
+```
+
+Установите backend зависимости:
+
+```bash
+cd backend
+npm install
+cd ..
+```
+
+---
+
+## 🚀 Шаг 4: Деплой backend
+
+### 4.1. Автоматический деплой (рекомендуется)
+
+**Windows (PowerShell):**
+```powershell
+.\scripts\deploy.ps1
+```
+
+**Linux/Mac (Bash):**
+```bash
+chmod +x scripts/deploy.sh
+./scripts/deploy.sh
+```
+
+Скрипт спросит:
+1. **MongoDB Connection URI** - вставьте строку из Шага 1.5
+2. **MongoDB Database Name** - введите `open-lance` (или другое)
+3. **Frontend URL** - введите `*` (для разработки) или URL GitHub Pages
+
+Скрипт выполнит:
+- ✅ Проверку зависимостей
+- ✅ Проверку аутентификации Cloudflare
+- ✅ Установку секретов (MONGODB_URI, JWT_SECRET, ALLOWED_ORIGIN)
+- ✅ Деплой Worker на Cloudflare
+- ✅ Обновление `docs/js/config.js` с URL Worker
+- ✅ Тестирование API
+
+**Примерное время:** 5-7 минут
+
+### 4.2. Ручной деплой
+
+Если автоматический скрипт не работает:
+
+```bash
+cd backend
+
+# Установите секреты
+echo "ваш-mongodb-uri" | wrangler secret put MONGODB_URI
+echo "ваш-jwt-secret" | wrangler secret put JWT_SECRET
+echo "*" | wrangler secret put ALLOWED_ORIGIN
+
+# Деплой
+wrangler deploy
+```
+
+Генерация JWT secret:
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-### 2.3 Initialize Terraform
+### 4.3. Проверка деплоя
 
+После деплоя вы получите URL Worker:
+```
+https://open-lance-backend.your-subdomain.workers.dev
+```
+
+Тест health endpoint:
 ```bash
-terraform init
+curl https://open-lance-backend.your-subdomain.workers.dev/health
 ```
 
-### 2.4 Review Plan
-
-```bash
-terraform plan
-```
-
-Review all resources that will be created.
-
-### 2.5 Apply Infrastructure
-
-```bash
-terraform apply
-```
-
-Type `yes` when prompted.
-
-**This will take 2-3 minutes.** Terraform will create:
-- IAM roles for Lambda
-- CloudWatch log groups
-- (Optional: Cognito User Pool if cognito.tf exists)
-
-**Note:** No DynamoDB tables are created - we're using MongoDB Atlas!
-
-### 2.6 Save Outputs
-
-```bash
-terraform output > ../terraform-outputs.txt
-```
-
-Note these values - you may need them for configuration:
-- AWS Account ID
-- AWS Region
-- Lambda execution role ARN
-
----
-
-## Step 3: Deploy Backend
-
-### 3.1 Navigate to Backend Directory
-
-```bash
-cd ../../backend
-```
-
-### 3.2 Install Dependencies
-
-```bash
-npm install
-```
-
-### 3.3 Create Environment File
-
-Create `.env` file:
-
-```bash
-# MongoDB Atlas (from Step 0)
-MONGODB_URI=mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority
-MONGODB_DATABASE=open-lance
-
-# JWT Secret (same as Terraform)
-JWT_SECRET=your-super-secret-jwt-key
-
-# CORS
-ALLOWED_ORIGIN=https://your-username.github.io
-
-# Stage
-STAGE=dev
-```
-
-### 3.4 Update serverless.yml
-
-Edit `serverless.yml` and update environment variables if needed:
-
-```yaml
-provider:
-  environment:
-    MONGODB_URI: ${env:MONGODB_URI}
-    MONGODB_DATABASE: ${env:MONGODB_DATABASE}
-    JWT_SECRET: ${env:JWT_SECRET}
-    ALLOWED_ORIGIN: ${env:ALLOWED_ORIGIN}
-```
-
-### 3.5 Deploy Backend to AWS
-
-**Deploy to dev:**
-```bash
-serverless deploy --stage dev
-```
-
-**Deploy to production:**
-```bash
-serverless deploy --stage prod
-```
-
-**This will take 3-5 minutes.** Serverless Framework will:
-- Package Lambda functions
-- Create API Gateway
-- Deploy all Lambda functions
-- Configure API Gateway endpoints
-
-### 3.6 Save API Gateway URL
-
-The deployment will output an API Gateway URL like:
-```
-https://abc123xyz.execute-api.us-east-1.amazonaws.com/dev
-```
-
-**Save this URL** - you'll need it for frontend configuration.
-
-### 3.7 Test Backend
-
-Test authentication endpoint:
-```bash
-curl -X POST https://your-api-url/dev/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "password": "TestPassword123!"
-  }'
-```
-
-Expected response:
+Ожидаемый ответ:
 ```json
 {
-  "success": true,
-  "data": {
-    "message": "Registration successful",
-    "user_id": "uuid-here"
-  }
+  "status": "healthy",
+  "timestamp": "2026-03-05T..."
 }
 ```
 
 ---
 
-## Step 4: Deploy Frontend
+## 🎨 Шаг 5: Настройка frontend
 
-### 4.1 Navigate to Frontend Directory
+### 5.1. Обновление конфигурации
 
-```bash
-cd ../frontend
-```
-
-### 4.2 Update Configuration
-
-Edit `js/config.js`:
+Откройте `docs/js/config.js` и проверьте URL:
 
 ```javascript
-const CONFIG = {
-    ENV: 'production',  // Change to 'production'
-    
-    API: {
-        production: {
-            baseURL: 'https://your-api-gateway-url/prod',  // From Step 3.6
-            region: 'us-east-1'
-        }
-    },
-    
-    COGNITO: {
-        production: {
-            UserPoolId: 'us-east-1_XXXXXXXXX',  // From Terraform output
-            ClientId: 'your-client-id'           // From Terraform output
-        }
-    }
+const config = {
+    baseURL: 'https://open-lance-backend.your-subdomain.workers.dev'
 };
 ```
 
-### 4.3 Test Locally
+Замените на ваш реальный Worker URL.
+
+### 5.2. Локальное тестирование
+
+Запустите локальный веб-сервер:
 
 ```bash
-# Python 3
-python -m http.server 8080
-
-# Or Python 2
-python -m SimpleHTTPServer 8080
+cd docs
+python -m http.server 8000
 ```
 
-Open browser: `http://localhost:8080`
+Откройте в браузере:
+```
+http://localhost:8000
+```
 
-Test:
-- ✅ Registration
-- ✅ Login
-- ✅ Create task
-- ✅ View tasks
-- ✅ Profile page
+Проверьте:
+- ✅ Регистрация работает
+- ✅ Логин работает
+- ✅ Создание задач работает
+- ✅ Просмотр задач работает
 
-### 4.4 Create GitHub Repository
+---
+
+## 🌐 Шаг 6: GitHub Pages
+
+### 6.1. Загрузка на GitHub
+
+Если еще не загрузили проект на GitHub:
 
 ```bash
-cd ..  # Back to project root
+# Инициализация Git (если еще не сделали)
 git init
+
+# Добавление файлов
 git add .
-git commit -m "Initial commit - Open-Lance platform"
-```
 
-Create repository on GitHub, then:
+# Первый коммит
+git commit -m "Initial commit: Open-Lance v3.2.3"
 
-```bash
-git remote add origin https://github.com/your-username/open-lance.git
+# Привязка к GitHub (создайте репозиторий на github.com)
+git remote add origin https://github.com/ваш-username/open-lance.git
+
+# Загрузка
 git branch -M main
 git push -u origin main
 ```
 
-### 4.5 Configure GitHub Pages
+### 6.2. Включение GitHub Pages
 
-1. Go to your repository on GitHub
-2. Click **Settings** → **Pages**
-3. Source: **Deploy from a branch**
-4. Branch: **main** → **/frontend** folder
-5. Click **Save**
+1. Откройте репозиторий на GitHub
+2. **Settings** → **Pages**
+3. **Source**: Deploy from a branch
+4. **Branch**: `main` → папка `/docs`
+5. **Save**
 
-Wait 2-3 minutes for deployment.
+Подождите 1-2 минуты.
 
-### 4.6 Update CORS Configuration
+### 6.3. Получение URL
 
-Update your API Gateway CORS settings to allow your GitHub Pages URL:
-
-Edit `backend/serverless.yml`:
-```yaml
-environment:
-  ALLOWED_ORIGIN: https://your-username.github.io
+Ваш frontend будет доступен по адресу:
+```
+https://ваш-username.github.io/open-lance/
 ```
 
-Redeploy backend:
+### 6.4. Обновление CORS
+
+Вернитесь к backend и обновите ALLOWED_ORIGIN:
+
 ```bash
 cd backend
-serverless deploy --stage prod
+echo "https://ваш-username.github.io" | wrangler secret put ALLOWED_ORIGIN
 ```
 
-### 4.7 Test Production Site
-
-Visit: `https://your-username.github.io`
-
-Test complete user flow:
-1. Register new account
-2. Login
-3. Create task
-4. View task list
-5. Update profile
-6. Add contact links
+Или укажите точный URL в скрипте деплоя и запустите его снова.
 
 ---
 
-## Step 5: Testing
+## 🧪 Тестирование
 
-### 5.1 API Testing with Postman
+### Тест 1: Регистрация
 
-1. Import `docs/postman-collection.json` into Postman
-2. Set environment variables:
-   - `base_url`: Your API Gateway URL
-3. Run collection:
-   - Register → Login → Create Task → Apply to Task
+1. Откройте ваш frontend (`https://ваш-username.github.io/open-lance/`)
+2. Нажмите **"Войти"**
+3. Перейдите на вкладку **"Регистрация"**
+4. Введите email и пароль
+5. Нажмите **"Зарегистрироваться"**
 
-### 5.2 Load Testing (Optional)
+Должно появиться уведомление об успешной регистрации.
 
-Install Artillery:
+### Тест 2: Логин
+
+1. Введите email и пароль
+2. Нажмите **"Войти"**
+
+После входа должна появиться панель навигации с кнопками:
+- Все задачи
+- Мои задачи
+- Создать задачу
+
+### Тест 3: Создание задачи
+
+1. Нажмите **"Создать задачу"**
+2. Заполните форму
+3. Нажмите **"Создать"**
+
+Задача должна появиться в списке.
+
+### Тест 4: Просмотр задач
+
+1. Нажмите **"Мои задачи"**
+2. Должны увидеть созданную задачу
+
+---
+
+## 🆘 Решение проблем
+
+### Проблема: "Not authenticated with Cloudflare"
+
+**Решение:**
 ```bash
-npm install -g artillery
+wrangler login
 ```
 
-Create `load-test.yml`:
-```yaml
-config:
-  target: "https://your-api-url/prod"
-  phases:
-    - duration: 60
-      arrivalRate: 10
-scenarios:
-  - name: "Get tasks"
-    flow:
-      - get:
-          url: "/tasks"
-```
-
-Run:
+Если не работает:
 ```bash
-artillery run load-test.yml
+wrangler logout
+wrangler login
 ```
 
-### 5.3 MongoDB Connection Verification
+### Проблема: "authentication failed" (MongoDB)
 
-Check that MongoDB Atlas connection is working:
+**Причина:** Неверный пароль в MongoDB URI
 
-1. Go to AWS Console → CloudWatch → Logs
-2. Check Lambda logs
-3. Verify entries like:
-   ```
-   Connecting to MongoDB Atlas...
-   Connected to MongoDB database: open-lance
-   MongoDB indexes created successfully
-   ```
+**Решение:**
+1. MongoDB Atlas → **Database Access**
+2. Найдите пользователя → **Edit** → **Edit Password**
+3. Введите новый пароль → **Update User**
+4. Обновите MongoDB URI с новым паролем
+5. Перезапустите деплой
 
-**Or check MongoDB Atlas:**
-1. Go to MongoDB Atlas Dashboard
-2. Click on your cluster → **Metrics**
-3. Verify "Operations" shows recent activity
+### Проблема: "IP not whitelisted" (MongoDB)
 
----
+**Решение:**
+1. MongoDB Atlas → **Network Access**
+2. **Add IP Address** → **Allow Access from Anywhere** (`0.0.0.0/0`)
+3. Подождите 2 минуты
 
-## Troubleshooting
+### Проблема: "workers.dev subdomain not registered"
 
-### Issue: Lambda can't connect to MongoDB Atlas
+**Решение:**
+1. Откройте Cloudflare Dashboard
+2. **Workers & Pages**
+3. Зарегистрируйте subdomain
+4. Повторите деплой
 
-**Solution:**
-- Check `MONGODB_URI` is correctly set in environment variables
-- Verify network access is configured in MongoDB Atlas (whitelist Lambda IP or use 0.0.0.0/0)
-- Check MongoDB Atlas cluster is running
-- Check Lambda logs in CloudWatch for connection errors
+### Проблема: Worker деплоится, но 500 Internal Server Error
 
-### Issue: CORS errors in browser
+**Причина:** Секреты не установлены или MongoDB недоступна
 
-**Solution:**
-- Update `ALLOWED_ORIGIN` in backend
-- Redeploy API Gateway
-- Clear browser cache
-
-### Issue: "Unauthorized" on all API calls
-
-**Solution:**
-- Check JWT token is being sent in Authorization header
-- Verify JWT_SECRET matches in backend and Cognito
-- Check token expiration
-
-### Issue: MongoDB Atlas connection timeout
-
-**Solution:**
-- Check MongoDB Atlas network access settings
-- Verify database user credentials
-- Ensure connection string is correct (including database name)
-- Check MongoDB Atlas cluster status
-
----
-
-## Production Checklist
-
-Before going to production:
-
-### Security
-- [ ] Change all default passwords and secrets
-- [ ] Use AWS Secrets Manager for sensitive data
-- [ ] Enable WAF on API Gateway (`enable_waf = true`)
-- [ ] Enable CloudTrail for audit logging
-- [ ] Review IAM policies for least privilege
-- [ ] Enable MFA on AWS accounts
-
-### Performance
-- [ ] Configure MongoDB Atlas cluster tier appropriately
-- [ ] Configure Lambda reserved concurrency
-- [ ] Enable API Gateway caching
-- [ ] Set up CloudFront for frontend (optional)
-
-### Monitoring
-- [ ] Set up CloudWatch dashboards
-- [ ] Configure SNS alerts for errors
-- [ ] Set up X-Ray tracing
-- [ ] Enable Lambda insights
-
-### Backup & Disaster Recovery
-- [ ] Enable MongoDB Atlas continuous backups
-- [ ] Configure backup retention policy
-- [ ] Document recovery procedures
-- [ ] Test restore from backup
-
-### Documentation
-- [ ] Document all environment variables
-- [ ] Update API documentation
-- [ ] Create runbooks for common issues
-- [ ] Document deployment process
-
-### Testing
-- [ ] Load testing completed
-- [ ] Security audit completed
-- [ ] End-to-end testing passed
-- [ ] Database backup/restore tested
-
----
-
-## Cost Optimization
-
-### For Development
-
-- Use MongoDB Atlas M0 (Free Tier) or M10 cluster
-- Set Lambda timeout to minimum required
-- Delete unused resources
-- Use AWS Cost Explorer
-
-### For Production
-
-- Upgrade MongoDB Atlas cluster as needed (M10, M20, etc.)
-- Enable Lambda provisioned concurrency for critical functions
-- Set up CloudWatch alarms for cost anomalies
-- Configure MongoDB Atlas alerts for storage and performance
-
----
-
-## Support & Resources
-
-- **AWS Documentation**: https://docs.aws.amazon.com/
-- **Terraform Registry**: https://registry.terraform.io/
-- **Serverless Framework**: https://www.serverless.com/framework/docs
-
----
-
-## Frequently Asked Questions (FAQ)
-
-### AWS Account & Region Questions
-
-**Q: Do I really need 2 AWS accounts?**
-A: Yes, for the full multi-account architecture. However, for testing/development, you can use one account and modify the Terraform configuration to skip cross-account setup.
-
-**Q: Can I change AWS region after deployment?**
-A: Yes, but it requires redeploying everything:
-1. Update region in all configuration files
-2. Run `terraform destroy` in old region
-3. Run `terraform apply` in new region
-4. Redeploy backend and update frontend config
-
-**Q: Which region is cheapest?**
-A: Generally `us-east-1` (N. Virginia) has the lowest prices for most services.
-
-**Q: What if I choose the wrong region?**
-A: You can redeploy to a different region, but data won't be automatically migrated. Start with testing before production deployment.
-
-**Q: Can I use multiple regions for high availability?**
-A: Yes, but this requires a more complex setup with:
-- MongoDB Atlas Global Clusters (multi-region)
-- Route53 for DNS failover
-- Lambda@Edge or CloudFront
-This is beyond the scope of this basic deployment.
-
-**Q: How do I check my current AWS region?**
-A: Run:
+**Проверка секретов:**
 ```bash
-aws configure get region --profile primary
+cd backend
+wrangler secret list
 ```
 
-**Q: What are AWS region naming conventions?**
-A: Format: `<geographic-area>-<sub-region>-<number>`
-- Example: `us-east-1` = United States, East coast, Availability zone 1
-- Example: `eu-west-2` = Europe, West (UK), Availability zone 2
+Должно быть:
+- `MONGODB_URI`
+- `JWT_SECRET`
+- `ALLOWED_ORIGIN`
 
-**Q: Do all AWS services work in all regions?**
-A: No, but all AWS services used in this project (Lambda, API Gateway, Cognito) are available in all major regions. MongoDB Atlas is a separate cloud service and is available globally.
-
-**Q: What's the difference between Region and Availability Zone?**
-A: 
-- **Region**: Geographic location (e.g., `us-east-1`)
-- **Availability Zone**: Isolated data center within a region (e.g., `us-east-1a`, `us-east-1b`)
-- This deployment uses one region but AWS automatically distributes across AZs
-
-**Q: How much will this project cost?**
-A: For development/testing with low traffic:
-- MongoDB Atlas: **Free** (M0 tier with 512MB storage)
-- Lambda: Free tier covers ~1M requests/month
-- API Gateway: ~$3.50 per 1M requests
-- Cognito: First 50,000 users are free
-- **Estimated monthly cost: $0-10** for small usage (mostly free!)
-
-**Q: How do I monitor AWS costs?**
-A:
-1. Go to AWS Console → Billing Dashboard
-2. Enable **Cost Explorer**
-3. Set up **Budget Alerts** (recommended: alert at $10, $25, $50)
-4. Check **Free Tier Usage** regularly
-
-**Q: What happens if I exceed AWS Free Tier?**
-A: You'll be charged based on usage. Set up billing alerts to avoid surprises.
-
-**Q: Can I delete everything and stop charges?**
-A: Yes:
+**Проверка логов:**
 ```bash
-cd infrastructure/terraform
-terraform destroy
-cd ../../backend
-serverless remove --stage dev
+wrangler tail
 ```
-This removes all resources and stops billing.
+
+### Проблема: Frontend не может подключиться к backend
+
+**Причины:**
+1. Неверный URL в `docs/js/config.js`
+2. CORS блокирует запросы
+
+**Решение:**
+1. Проверьте URL Worker в `config.js`
+2. Обновите `ALLOWED_ORIGIN`:
+```bash
+echo "https://ваш-username.github.io" | wrangler secret put ALLOWED_ORIGIN
+```
+
+### Проблема: "Мои задачи" загружаются 10 секунд
+
+**Причина:** Cold start (первый запрос после простоя)
+
+**Нормально!** Это особенность serverless free tier.
+
+**Оптимизации уже внедрены:**
+- ✅ Frontend кэширование (мгновенная загрузка при повторном визите)
+- ✅ Loading indicator (пользователь видит что идёт загрузка)
+- ✅ Background refresh (данные обновляются в фоне)
+
+Второй и последующие визиты: ~1 секунда или мгновенно (из кэша)
+
+### Проблема: Toast уведомления не видны
+
+**Решение:** Обновлено в последней версии.
+
+Если проблема осталась:
+```bash
+git pull origin main
+```
+
+### Проблема: "Failed to publish" при деплое
+
+**Причины:**
+1. Нет интернета
+2. Cloudflare временно недоступен
+3. Превышен лимит Workers (100 на free tier)
+
+**Решение:**
+```bash
+# Проверка подключения
+curl https://api.cloudflare.com/
+
+# Попробуйте снова
+cd backend
+wrangler deploy
+```
 
 ---
 
-## License
+## 📊 Мониторинг
 
-MIT License - See LICENSE file for details
+### Cloudflare Dashboard
+
+1. [dash.cloudflare.com](https://dash.cloudflare.com/)
+2. **Workers & Pages** → ваш Worker
+3. Вкладки:
+   - **Metrics**: Графики запросов, ошибок, CPU
+   - **Logs**: Логи в реальном времени
+   - **Settings**: Переменные, домены
+
+### Real-time логи
+
+```bash
+cd backend
+wrangler tail --format pretty
+```
+
+### MongoDB Atlas метрики
+
+1. [cloud.mongodb.com](https://cloud.mongodb.com/)
+2. **Database** → ваш кластер → **Metrics**
+3. Смотрите:
+   - Operations per second
+   - Connections
+   - Storage usage
 
 ---
 
-**Congratulations! Your Open-Lance platform is now deployed! 🎉**
+## 🔧 Обновление после изменений
 
-For issues or questions, check the troubleshooting section or create an issue in the repository.
+### Обновление backend
+
+```bash
+cd backend
+wrangler deploy
+```
+
+### Обновление frontend
+
+```bash
+git add .
+git commit -m "Update frontend"
+git push origin main
+```
+
+GitHub Pages обновится автоматически через 1-2 минуты.
+
+---
+
+## 💰 Лимиты Free Tier
+
+### Cloudflare Workers
+
+| Ресурс | Free | Достаточно для |
+|--------|------|----------------|
+| Запросы | 100,000/день | ~3M/месяц |
+| CPU Time | 10ms/запрос | Большинства задач |
+| Workers | 100 | Много проектов |
+
+### MongoDB Atlas M0
+
+| Ресурс | Free | Достаточно для |
+|--------|------|----------------|
+| Storage | 512 MB | ~10,000 пользователей |
+| RAM | Shared | Легкая нагрузка |
+| Backups | Нет | Ручной mongodump |
+
+**Для production рекомендуется:**
+- MongoDB Atlas M2/M5 (~$9-25/месяц) - автоматические бэкапы
+- Cloudflare Workers Unbound (~$5/10M запросов) - больше CPU time
+
+Но **free tier достаточен** для MVP и малых проектов!
+
+---
+
+## ✅ Чеклист успешного деплоя
+
+- [ ] MongoDB Atlas кластер создан
+- [ ] Database User создан, пароль сохранен
+- [ ] Network Access настроен (0.0.0.0/0)
+- [ ] Cloudflare аккаунт создан
+- [ ] Workers.dev subdomain зарегистрирован
+- [ ] Wrangler CLI установлен и авторизован
+- [ ] Backend задеплоен успешно
+- [ ] Секреты установлены (MONGODB_URI, JWT_SECRET, ALLOWED_ORIGIN)
+- [ ] Worker отвечает на `/health`
+- [ ] Frontend `config.js` обновлен с Worker URL
+- [ ] Проект загружен на GitHub
+- [ ] GitHub Pages включен (/docs)
+- [ ] Frontend доступен по https://username.github.io/open-lance/
+- [ ] Регистрация работает
+- [ ] Логин работает
+- [ ] Создание задач работает
+- [ ] Просмотр задач работает
+
+**Если все пункты выполнены - поздравляем! 🎉**
+
+**Ваша платформа работает глобально на edge-сети Cloudflare!** 🚀
+
+---
+
+## 📞 Поддержка
+
+- **Issues**: [GitHub Issues](https://github.com/your-username/open-lance/issues)
+- **Cloudflare Docs**: [developers.cloudflare.com/workers](https://developers.cloudflare.com/workers/)
+- **MongoDB Docs**: [docs.mongodb.com](https://docs.mongodb.com/)
+
+---
+
+**Успешного деплоя! 🚀**

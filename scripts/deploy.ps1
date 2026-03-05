@@ -2,7 +2,6 @@
 # Cloudflare Workers + MongoDB Atlas deployment automation
 
 param(
-    [string]$Environment = "dev",
     [switch]$SkipBackend,
     [switch]$Help
 )
@@ -147,16 +146,9 @@ function Test-Prerequisites {
 function Test-CloudflareAuth {
     Write-Header "Checking Cloudflare Authentication"
     
-    try {
-        $whoami = wrangler whoami 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "Cloudflare authentication configured"
-            Write-Host $whoami
-        } else {
-            throw "Not authenticated"
-        }
-    }
-    catch {
+    $whoamiOutput = wrangler whoami 2>&1 | Out-String
+    
+    if ($whoamiOutput -match "You are not authenticated" -or $whoamiOutput -match "not logged in") {
         Write-WarningMsg "Cloudflare authentication not configured"
         Write-Host ""
         Write-Host "Please authenticate with Cloudflare:" -ForegroundColor Yellow
@@ -165,10 +157,19 @@ function Test-CloudflareAuth {
         $runLogin = Read-Host "Run 'wrangler login' now? (y/n)"
         if ($runLogin -eq "y") {
             wrangler login
+            # Verify authentication worked
+            $whoamiCheck = wrangler whoami 2>&1 | Out-String
+            if ($whoamiCheck -match "You are not authenticated") {
+                Write-ErrorMsg "Authentication failed. Please run 'wrangler login' manually."
+                exit 1
+            }
         } else {
             Write-ErrorMsg "Cloudflare authentication required"
             exit 1
         }
+    } else {
+        Write-Success "Cloudflare authentication configured"
+        Write-Host $whoamiOutput
     }
 }
 
@@ -222,9 +223,11 @@ function Set-DeploymentConfig {
         }
     } while ([string]::IsNullOrWhiteSpace($MONGODB_URI))
     
-    $script:MONGODB_DATABASE = Read-Host "MongoDB Database Name [open-lance]"
-    if ([string]::IsNullOrWhiteSpace($MONGODB_DATABASE)) {
+    $dbInput = Read-Host "MongoDB Database Name [open-lance]"
+    if ([string]::IsNullOrWhiteSpace($dbInput)) {
         $script:MONGODB_DATABASE = "open-lance"
+    } else {
+        $script:MONGODB_DATABASE = $dbInput
     }
     
     # Frontend URL
@@ -277,22 +280,85 @@ function Deploy-Backend {
     # Set Cloudflare Workers secrets
     Write-Info "Setting Cloudflare Workers secrets..."
     
-    # MongoDB URI
-    Write-Host $MONGODB_URI | wrangler secret put MONGODB_URI --env $Environment
+    # MongoDB URI - using temporary file for proper piping
+    Write-Info "Setting MONGODB_URI secret..."
+    $MONGODB_URI | Out-File -FilePath "$env:TEMP\mongodb_uri.txt" -Encoding ASCII -NoNewline
+    $secretResult1 = Get-Content "$env:TEMP\mongodb_uri.txt" | wrangler secret put MONGODB_URI 2>&1
+    Remove-Item "$env:TEMP\mongodb_uri.txt" -ErrorAction SilentlyContinue
+    
+    # Check if secret was actually set (ignore warnings)
+    if ($secretResult1 -match "error|failed" -and $secretResult1 -notmatch "Created|Updated") {
+        Write-ErrorMsg "Failed to set MONGODB_URI secret"
+        Write-Host $secretResult1
+        exit 1
+    }
+    Write-Host "[OK] MONGODB_URI secret set" -ForegroundColor Green
     
     # JWT Secret
-    Write-Host $JWT_SECRET | wrangler secret put JWT_SECRET --env $Environment
+    Write-Info "Setting JWT_SECRET secret..."
+    $JWT_SECRET | Out-File -FilePath "$env:TEMP\jwt_secret.txt" -Encoding ASCII -NoNewline
+    $secretResult2 = Get-Content "$env:TEMP\jwt_secret.txt" | wrangler secret put JWT_SECRET 2>&1
+    Remove-Item "$env:TEMP\jwt_secret.txt" -ErrorAction SilentlyContinue
     
-    # Deploy with Wrangler
+    # Check if secret was actually set (ignore warnings)
+    if ($secretResult2 -match "error|failed" -and $secretResult2 -notmatch "Created|Updated") {
+        Write-ErrorMsg "Failed to set JWT_SECRET secret"
+        Write-Host $secretResult2
+        exit 1
+    }
+    Write-Host "[OK] JWT_SECRET secret set" -ForegroundColor Green
+    
+    # Deploy with Wrangler (ignore warnings, only check for real errors)
     Write-Info "Deploying Cloudflare Worker..."
-    wrangler deploy --env $Environment
+    $prevErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $deployOutput = wrangler deploy 2>&1 | Out-String
+    $ErrorActionPreference = $prevErrorActionPreference
+    Write-Host $deployOutput
     
-    # Worker URL
-    $script:API_URL = "https://open-lance-backend-$Environment.<your-subdomain>.workers.dev"
+    # Check for workers.dev subdomain registration error
+    if ($deployOutput -match "register a workers\.dev subdomain") {
+        Write-Host ""
+        Write-Host "================================================================================" -ForegroundColor Red
+        Write-Host "ERROR: Workers.dev Subdomain Not Registered!" -ForegroundColor Red
+        Write-Host "================================================================================" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "You need to register a workers.dev subdomain ONCE before deploying." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "Steps:" -ForegroundColor Cyan
+        Write-Host "1. Open this link in your browser:" -ForegroundColor White
+        Write-Host "   https://dash.cloudflare.com/70d3983867be1dd89a1d96751805e765/workers/onboarding" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "2. Choose a subdomain name (e.g., myapp.workers.dev)" -ForegroundColor White
+        Write-Host ""
+        Write-Host "3. Click 'Register'" -ForegroundColor White
+        Write-Host ""
+        Write-Host "4. Run this script again" -ForegroundColor White
+        Write-Host ""
+        Write-Host "This is a ONE-TIME step for your Cloudflare account." -ForegroundColor Yellow
+        Write-Host "================================================================================" -ForegroundColor Red
+        exit 1
+    }
     
-    Write-Success "Backend deployed successfully"
-    Write-Info "Worker URL: $API_URL"
-    Write-WarningMsg "Update your worker URL in Cloudflare dashboard if needed"
+    # Check for deployment errors (ignore warnings)
+    if ($deployOutput -match "error|failed|Error:" -and $deployOutput -notmatch "Deployed|Uploaded") {
+        Write-ErrorMsg "Deployment failed!"
+        Write-Host $deployOutput
+        exit 1
+    }
+    
+    # Extract Worker URL from deploy output
+    if ($deployOutput -match "https://[a-zA-Z0-9-]+\.workers\.dev") {
+        $script:API_URL = $Matches[0]
+        Write-Success "Backend deployed successfully"
+        Write-Info "Worker URL: $API_URL"
+    } else {
+        $script:API_URL = "https://open-lance-backend.<your-subdomain>.workers.dev"
+        Write-Success "Backend deployment completed"
+        Write-WarningMsg "Could not automatically detect Worker URL"
+        Write-WarningMsg "Please check Cloudflare dashboard: https://dash.cloudflare.com/"
+        Write-Info "Expected URL format: $API_URL"
+    }
     
     # Save to config
     $configFile = Join-Path $ProjectRoot ".deploy-config.ps1"
@@ -349,7 +415,7 @@ function getConfig() {
 window.APP_CONFIG = getConfig();
 "@
     
-    $configPath = Join-Path $ProjectRoot "frontend\js\config.js"
+    $configPath = Join-Path $ProjectRoot "docs\js\config.js"
     $configContent | Out-File -FilePath $configPath -Encoding UTF8
     
     Write-Success "Frontend configured successfully"
@@ -411,7 +477,7 @@ function Write-Summary {
     Write-Host "   Test the API endpoint at: $API_URL/auth/register" -ForegroundColor Gray
     Write-Host ""
     Write-Host "2. Test frontend locally:" -ForegroundColor Cyan
-    Write-Host "   cd frontend" -ForegroundColor Gray
+    Write-Host "   cd docs" -ForegroundColor Gray
     Write-Host "   python -m http.server 8080" -ForegroundColor Gray
     Write-Host "   Open http://localhost:8080" -ForegroundColor Gray
     Write-Host ""
@@ -423,7 +489,7 @@ function Write-Summary {
     Write-Host "   git add ." -ForegroundColor Gray
     Write-Host "   git commit -m 'Deploy Open-Lance v3.0'" -ForegroundColor Gray
     Write-Host "   git push origin main" -ForegroundColor Gray
-    Write-Host "   Or use: wrangler pages deploy frontend" -ForegroundColor Gray
+    Write-Host "   Or use: wrangler pages deploy docs" -ForegroundColor Gray
     Write-Host ""
     Write-Host "5. Monitor:" -ForegroundColor Cyan
     Write-Host "   Cloudflare Dashboard: https://dash.cloudflare.com/" -ForegroundColor Gray
