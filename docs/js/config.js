@@ -1,9 +1,11 @@
-﻿// Configuration for Open-Lance v3.0 (Cloudflare Workers + MongoDB Atlas)
+// Configuration for Open-Lance v3.0 (Cloudflare Workers + MongoDB Atlas)
 const CONFIG = {
     ENV: 'PROD',
     API: {
+        local:       { baseURL: 'http://127.0.0.1:8787' },
         development: { baseURL: 'https://open-lance-backend.dronov-dmitry-bim.workers.dev' },
-        production: { baseURL: 'https://open-lance-backend.dronov-dmitry-bim.workers.dev' }
+        production:  { baseURL: 'https://open-lance-backend.dronov-dmitry-bim.workers.dev' },
+        PROD:        { baseURL: 'https://open-lance-backend.dronov-dmitry-bim.workers.dev' }
     },
     SETTINGS: {
         maxContactLinks: 10,
@@ -15,10 +17,9 @@ const CONFIG = {
 
 function getConfig() {
     const env = CONFIG.ENV || 'development';
-    let fallbackURL = 'https://open-lance-backend.dronov-dmitry-bim.workers.dev';
-    if (env === 'local' || env === 'development') {
-        fallbackURL = 'http://127.0.0.1:8787';
-    }
+    const fallbackURL = (env === 'local')
+        ? 'http://127.0.0.1:8787'
+        : 'https://open-lance-backend.dronov-dmitry-bim.workers.dev';
     const apiConfig = CONFIG.API[env] || { baseURL: fallbackURL };
     return {
         apiBaseURL: apiConfig.baseURL,
@@ -27,3 +28,4 @@ function getConfig() {
 }
 
 window.APP_CONFIG = getConfig();
+
