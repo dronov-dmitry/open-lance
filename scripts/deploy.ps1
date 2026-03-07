@@ -186,8 +186,8 @@ function Get-DeploymentConfig {
     # Target Environment Selection
     Write-Host ""
     Write-Host "Select Target Environment:" -ForegroundColor Cyan
-    Write-Host "1) Local Testing (generates .dev.vars for use with start_dev scripts)" -ForegroundColor White
-    Write-Host "2) Cloudflare Workers (deploys to cloud)" -ForegroundColor White
+    Write-Host "1) DEVELOPMENT (Local Testing, creates .dev.vars, uses DEV_ variables)" -ForegroundColor White
+    Write-Host "2) PRODUCTION (Cloudflare Workers, deploys to cloud, uses PROD_ variables)" -ForegroundColor White
     
     do {
         $envChoice = Read-Host "Choose an option (1 or 2)"
@@ -195,8 +195,10 @@ function Get-DeploymentConfig {
     
     if ($envChoice -eq "1") {
         $script:Environment = "local"
+        $script:EnvPrefix = "DEV_"
     } else {
         $script:Environment = "dev" # Default for cloud
+        $script:EnvPrefix = "PROD_"
         # If cloud deployment is selected, we MUST check auth
         Test-CloudflareAuth
     }
@@ -226,62 +228,102 @@ function Get-DeploymentConfig {
         # Restore user's choice (don't let the saved config override what they just selected)
         if ($envChoice -eq "1") {
             $script:Environment = "local"
+            $script:EnvPrefix = "DEV_"
         } else {
             $script:Environment = "dev"
+            $script:EnvPrefix = "PROD_"
         }
         
-        $script:MONGODB_URI = if ($envVars.ContainsKey('MONGODB_URI')) { $envVars['MONGODB_URI'] } else { $null }
-        $script:MONGODB_DATABASE = if ($envVars.ContainsKey('MONGODB_DATABASE')) { $envVars['MONGODB_DATABASE'] } else { $null }
-        $script:FRONTEND_URL = if ($envVars.ContainsKey('FRONTEND_URL')) { $envVars['FRONTEND_URL'] } else { $null }
-        $script:JWT_SECRET = if ($envVars.ContainsKey('JWT_SECRET')) { $envVars['JWT_SECRET'] } else { $null }
-        $script:API_URL = if ($envVars.ContainsKey('API_URL')) { $envVars['API_URL'] } else { $null }
-        $script:MONGODB_API_KEY = if ($envVars.ContainsKey('MONGODB_API_KEY')) { $envVars['MONGODB_API_KEY'] } else { $null }
-        $script:EMAILJS_PUBLIC_KEY = if ($envVars.ContainsKey('EMAILJS_PUBLIC_KEY')) { $envVars['EMAILJS_PUBLIC_KEY'] } else { $null }
-        $script:EMAILJS_SERVICE_ID = if ($envVars.ContainsKey('EMAILJS_SERVICE_ID')) { $envVars['EMAILJS_SERVICE_ID'] } else { $null }
-        $script:EMAILJS_TEMPLATE_ID = if ($envVars.ContainsKey('EMAILJS_TEMPLATE_ID')) { $envVars['EMAILJS_TEMPLATE_ID'] } else { $null }
-        $script:EMAILJS_PRIVATE_KEY = if ($envVars.ContainsKey('EMAILJS_PRIVATE_KEY')) { $envVars['EMAILJS_PRIVATE_KEY'] } else { $null }
+        # Helper to get prefixed or fallback variable
+        function Get-EnvVar {
+            param([string]$Key)
+            if ($envVars.ContainsKey("$($script:EnvPrefix)$Key")) { return $envVars["$($script:EnvPrefix)$Key"] }
+            if ($envVars.ContainsKey($Key)) { return $envVars[$Key] }
+            return $null
+        }
+
+        $script:MONGODB_URI = Get-EnvVar 'MONGODB_URI'
+        $script:MONGODB_DATABASE = Get-EnvVar 'MONGODB_DATABASE'
+        $script:FRONTEND_URL = Get-EnvVar 'FRONTEND_URL'
+        $script:JWT_SECRET = Get-EnvVar 'JWT_SECRET'
+        $script:API_URL = Get-EnvVar 'API_URL'
+        $script:MONGODB_API_KEY = Get-EnvVar 'MONGODB_API_KEY'
+        $script:EMAILJS_PUBLIC_KEY = Get-EnvVar 'EMAILJS_PUBLIC_KEY'
+        $script:EMAILJS_SERVICE_ID = Get-EnvVar 'EMAILJS_SERVICE_ID'
+        $script:EMAILJS_TEMPLATE_ID = Get-EnvVar 'EMAILJS_TEMPLATE_ID'
+        $script:EMAILJS_PRIVATE_KEY = Get-EnvVar 'EMAILJS_PRIVATE_KEY'
         
-        if ($envChoice -eq "1") {
-            # For local testing, silently use existing config (to generate .dev.vars)
-            Write-Info "Using existing configuration for local testing secrets."
+        $hasConfig = -not [string]::IsNullOrWhiteSpace($script:MONGODB_URI)
+        
+        if ($hasConfig) {
+            $useExisting = Read-Host "Found existing $($script:EnvPrefix) configuration. Use it? (y/n)"
             
-            # Keep existing config but update the Environment variable in .env
-            $updatedEnvContent = $envContent -replace 'Environment=["\u0027]?dev["\u0027]?', 'Environment="local"'
-            $updatedEnvContent | Out-File -FilePath $configFile -Encoding UTF8
-            return
-        } else {
-            $useExisting = Read-Host "Use existing configuration? (y/n)"
-            if ($useExisting -ne "y") {
-                # Clear all loaded variables so the script actually prompts for them
-                $script:MONGODB_URI = $null
-                $script:MONGODB_DATABASE = $null
-                $script:FRONTEND_URL = $null
-                $script:JWT_SECRET = $null
-                $script:API_URL = $null
-                $script:MONGODB_API_KEY = $null
-                $script:EMAILJS_PUBLIC_KEY = $null
-                $script:EMAILJS_SERVICE_ID = $null
-                $script:EMAILJS_TEMPLATE_ID = $null
-                $script:EMAILJS_PRIVATE_KEY = $null
-                Set-DeploymentConfig
-            } else {
-                # Keep existing config but update the Environment variable in .env
-                $updatedEnvContent = $envContent -replace 'Environment=["\u0027]?local["\u0027]?', 'Environment="dev"'
-                $updatedEnvContent | Out-File -FilePath $configFile -Encoding UTF8
+            if ($useExisting -eq "y") {
+                # We need to write the chosen prefix config into the raw unprefixed keys in .env
+                Write-Info "Activating $($script:EnvPrefix) profile..."
                 
+                $newConfig = @{}
+                foreach ($item in $envData) { foreach ($key in $item.Keys) { $newConfig[$key] = $item[$key] } }
+                
+                if ($script:EnvPrefix -eq "PROD_") {
+                    $newConfig['Environment'] = "`"$($script:Environment)`""
+                    if ($script:MONGODB_URI) { $newConfig['MONGODB_URI'] = "`"$script:MONGODB_URI`"" }
+                    if ($script:MONGODB_DATABASE) { $newConfig['MONGODB_DATABASE'] = "`"$script:MONGODB_DATABASE`"" }
+                    if ($script:FRONTEND_URL) { $newConfig['FRONTEND_URL'] = "`"$script:FRONTEND_URL`"" }
+                    if ($script:JWT_SECRET) { $newConfig['JWT_SECRET'] = "`"$script:JWT_SECRET`"" }
+                    if ($script:MONGODB_API_KEY) { $newConfig['MONGODB_API_KEY'] = "`"$script:MONGODB_API_KEY`"" }
+                    if ($script:EMAILJS_PUBLIC_KEY) { $newConfig['EMAILJS_PUBLIC_KEY'] = "`"$script:EMAILJS_PUBLIC_KEY`"" }
+                    if ($script:EMAILJS_SERVICE_ID) { $newConfig['EMAILJS_SERVICE_ID'] = "`"$script:EMAILJS_SERVICE_ID`"" }
+                    if ($script:EMAILJS_TEMPLATE_ID) { $newConfig['EMAILJS_TEMPLATE_ID'] = "`"$script:EMAILJS_TEMPLATE_ID`"" }
+                    if ($script:EMAILJS_PRIVATE_KEY) { $newConfig['EMAILJS_PRIVATE_KEY'] = "`"$script:EMAILJS_PRIVATE_KEY`"" }
+                }
+                
+                $configContent = "# Open-Lance Deployment Configuration v3.0`n`n"
+                
+                $configContent += "### Active Configuration (Used by Backend) ###`n"
+                foreach ($key in $newConfig.Keys | Where-Object { $_ -notmatch '^(DEV_|PROD_)' } | Sort-Object) {
+                    $configContent += "$key=$($newConfig[$key])`n"
+                }
+                
+                $configContent += "`n### DEVELOPMENT Profile ###`n"
+                foreach ($key in $newConfig.Keys | Where-Object { $_ -match '^DEV_' } | Sort-Object) {
+                    $configContent += "$key=$($newConfig[$key])`n"
+                }
+
+                $configContent += "`n### PRODUCTION Profile ###`n"
+                foreach ($key in $newConfig.Keys | Where-Object { $_ -match '^PROD_' } | Sort-Object) {
+                    $configContent += "$key=$($newConfig[$key])`n"
+                }
+                
+                $configContent | Out-File -FilePath $configFile -Encoding UTF8
+
                 # Check and report EmailJS configuration status
                 Write-Host ""
                 if (-not [string]::IsNullOrWhiteSpace($script:EMAILJS_PUBLIC_KEY) -and 
                     -not [string]::IsNullOrWhiteSpace($script:EMAILJS_SERVICE_ID) -and 
                     -not [string]::IsNullOrWhiteSpace($script:EMAILJS_TEMPLATE_ID) -and 
                     -not [string]::IsNullOrWhiteSpace($script:EMAILJS_PRIVATE_KEY)) {
-                    Write-Success "EmailJS configuration found in .env - will be installed to Cloudflare Workers"
+                    Write-Success "EmailJS configuration is active"
                 } else {
-                    Write-WarningMsg "EmailJS not fully configured in .env - emails will use fallback mode (links in logs)"
+                    Write-WarningMsg "EmailJS not fully configured - emails will use fallback mode"
                 }
                 return
             }
         }
+        
+        # If we got here, they chose "n" or the config was missing
+        # Clear all loaded variables so the script actually prompts for them
+        $script:MONGODB_URI = $null
+        $script:MONGODB_DATABASE = $null
+        $script:FRONTEND_URL = $null
+        $script:JWT_SECRET = $null
+        $script:API_URL = $null
+        $script:MONGODB_API_KEY = $null
+        $script:EMAILJS_PUBLIC_KEY = $null
+        $script:EMAILJS_SERVICE_ID = $null
+        $script:EMAILJS_TEMPLATE_ID = $null
+        $script:EMAILJS_PRIVATE_KEY = $null
+        Set-DeploymentConfig
     }
     else {
         Set-DeploymentConfig
@@ -403,27 +445,80 @@ function Set-DeploymentConfig {
         Write-Host "[INFO] EmailJS skipped - using fallback mode (links in logs)" -ForegroundColor Cyan
     }
     
+    # Backend API URL (PRODUCTION only - known after first deploy)
+    Set-Variable -Name API_URL -Value "" -Scope Script
+    if ($script:EnvPrefix -eq "PROD_") {
+        Write-Host ""
+        Write-Host "Backend API URL" -ForegroundColor Yellow
+        Write-Host "  Format: https://open-lance-backend.your-subdomain.workers.dev" -ForegroundColor Gray
+        Write-Host "  Leave empty on FIRST deploy - URL will be detected automatically." -ForegroundColor Gray
+        Write-Host "  On subsequent deploys, paste the URL from Cloudflare dashboard." -ForegroundColor Gray
+        $apiUrlInput = Read-Host "Backend API URL (leave empty to auto-detect after deploy)"
+        if (-not [string]::IsNullOrWhiteSpace($apiUrlInput)) {
+            Set-Variable -Name API_URL -Value ($apiUrlInput.Trim()) -Scope Script
+            Write-Host "[OK] Backend API URL configured." -ForegroundColor Green
+        }
+    }
+
     # Generate JWT Secret
     Write-Info "Generating JWT secret..."
     $script:JWT_SECRET = & node -e 'console.log(require(\"crypto\").randomBytes(32).toString(\"hex\"))'
     
     # Save configuration
-    $configContent = @"
-# Open-Lance Deployment Configuration v3.0 (Cloudflare Workers)
-Environment="$Environment"
-MONGODB_URI="$MONGODB_URI"
-MONGODB_API_KEY="$MONGODB_API_KEY"
-MONGODB_DATABASE="$MONGODB_DATABASE"
-FRONTEND_URL="$FRONTEND_URL"
-JWT_SECRET="$JWT_SECRET"
-EMAILJS_PUBLIC_KEY="$EMAILJS_PUBLIC_KEY"
-EMAILJS_SERVICE_ID="$EMAILJS_SERVICE_ID"
-EMAILJS_TEMPLATE_ID="$EMAILJS_TEMPLATE_ID"
-EMAILJS_PRIVATE_KEY="$EMAILJS_PRIVATE_KEY"
-"@
+    $newConfig = @{}
+    $envDataPath = Join-Path $ProjectRoot ".env"
+    if (Test-Path $envDataPath) {
+        Get-Content $envDataPath | Where-Object { $_ -match '=' -and $_ -notmatch '^#' } | ForEach-Object {
+            $parts = $_ -split '=', 2
+            $newConfig[($parts[0].Trim())] = ($parts[1].Trim())
+        }
+    }
+
+    # Update unprefixed (active) config
+    $newConfig['Environment'] = "`"$Environment`""
+    if ($MONGODB_URI) { $newConfig['MONGODB_URI'] = "`"$MONGODB_URI`"" }
+    if ($MONGODB_DATABASE) { $newConfig['MONGODB_DATABASE'] = "`"$MONGODB_DATABASE`"" }
+    if ($FRONTEND_URL) { $newConfig['FRONTEND_URL'] = "`"$FRONTEND_URL`"" }
+    if ($JWT_SECRET) { $newConfig['JWT_SECRET'] = "`"$JWT_SECRET`"" }
+    if ($MONGODB_API_KEY) { $newConfig['MONGODB_API_KEY'] = "`"$MONGODB_API_KEY`"" }
+    if ($EMAILJS_PUBLIC_KEY) { $newConfig['EMAILJS_PUBLIC_KEY'] = "`"$EMAILJS_PUBLIC_KEY`"" }
+    if ($EMAILJS_SERVICE_ID) { $newConfig['EMAILJS_SERVICE_ID'] = "`"$EMAILJS_SERVICE_ID`"" }
+    if ($EMAILJS_TEMPLATE_ID) { $newConfig['EMAILJS_TEMPLATE_ID'] = "`"$EMAILJS_TEMPLATE_ID`"" }
+    if ($EMAILJS_PRIVATE_KEY) { $newConfig['EMAILJS_PRIVATE_KEY'] = "`"$EMAILJS_PRIVATE_KEY`"" }
+
+    # Save prefixed config for persistence
+    $newConfig["$($script:EnvPrefix)Environment"] = "`"$Environment`""
+    if ($MONGODB_URI) { $newConfig["$($script:EnvPrefix)MONGODB_URI"] = "`"$MONGODB_URI`"" }
+    if ($MONGODB_DATABASE) { $newConfig["$($script:EnvPrefix)MONGODB_DATABASE"] = "`"$MONGODB_DATABASE`"" }
+    if ($FRONTEND_URL) { $newConfig["$($script:EnvPrefix)FRONTEND_URL"] = "`"$FRONTEND_URL`"" }
+    if ($JWT_SECRET) { $newConfig["$($script:EnvPrefix)JWT_SECRET"] = "`"$JWT_SECRET`"" }
+    if ($MONGODB_API_KEY) { $newConfig["$($script:EnvPrefix)MONGODB_API_KEY"] = "`"$MONGODB_API_KEY`"" }
+    if ($EMAILJS_PUBLIC_KEY) { $newConfig["$($script:EnvPrefix)EMAILJS_PUBLIC_KEY"] = "`"$EMAILJS_PUBLIC_KEY`"" }
+    if ($EMAILJS_SERVICE_ID) { $newConfig["$($script:EnvPrefix)EMAILJS_SERVICE_ID"] = "`"$EMAILJS_SERVICE_ID`"" }
+    if ($EMAILJS_TEMPLATE_ID) { $newConfig["$($script:EnvPrefix)EMAILJS_TEMPLATE_ID"] = "`"$EMAILJS_TEMPLATE_ID`"" }
+    if ($EMAILJS_PRIVATE_KEY) { $newConfig["$($script:EnvPrefix)EMAILJS_PRIVATE_KEY"] = "`"$EMAILJS_PRIVATE_KEY`"" }
+    if ($script:API_URL) { $newConfig["$($script:EnvPrefix)API_URL"] = "`"$script:API_URL`"" }
+
+    $configContent = "# Open-Lance Deployment Configuration v3.0`n`n"
+    
+    $configContent += "### Active Configuration (Used by Backend) ###`n"
+    foreach ($key in $newConfig.Keys | Where-Object { $_ -notmatch '^(DEV_|PROD_)' } | Sort-Object) {
+        $configContent += "$key=$($newConfig[$key])`n"
+    }
+    
+    $configContent += "`n### DEVELOPMENT Profile ###`n"
+    foreach ($key in $newConfig.Keys | Where-Object { $_ -match '^DEV_' } | Sort-Object) {
+        $configContent += "$key=$($newConfig[$key])`n"
+    }
+
+    $configContent += "`n### PRODUCTION Profile ###`n"
+    foreach ($key in $newConfig.Keys | Where-Object { $_ -match '^PROD_' } | Sort-Object) {
+        $configContent += "$key=$($newConfig[$key])`n"
+    }
+    
     
     $configContent | Out-File -FilePath $configFile -Encoding UTF8
-    Write-Success "Configuration saved to .env"
+    Write-Success "Configuration saved to .env (Active and $script:EnvPrefix profile)"
     
     # Check if .gitignore exists, .env is usually already in there
     $gitignorePath = Join-Path $ProjectRoot ".gitignore"
@@ -668,15 +763,33 @@ JWT_SECRET="$JWT_SECRET"
         Write-Info "Expected URL format: $API_URL"
     }
     
-    # Save to config
+    # Save API_URL in both active section and PROD_ profile — rebuild .env cleanly
     $configFile = Join-Path $ProjectRoot ".env"
-    $envContent = Get-Content -Path $configFile -Raw
-    if ($envContent -match "(?m)^API_URL=.*$") {
-        $envContent = $envContent -replace "(?m)^API_URL=.*$", "API_URL=`"$API_URL`""
-        $envContent | Out-File -FilePath $configFile -Encoding UTF8
-    } else {
-        Add-Content -Path $configFile -Value "`nAPI_URL=`"$API_URL`""
+    $rebuildConfig = @{}
+    if (Test-Path $configFile) {
+        Get-Content $configFile | Where-Object { $_ -match '=' -and $_ -notmatch '^#' } | ForEach-Object {
+            $parts = $_ -split '=', 2
+            $rebuildConfig[($parts[0].Trim())] = ($parts[1].Trim())
+        }
     }
+    $rebuildConfig['API_URL'] = "`"$API_URL`""
+    $rebuildConfig['PROD_API_URL'] = "`"$API_URL`""
+
+    $configContent = "# Open-Lance Deployment Configuration v3.0`n`n"
+    $configContent += "### Active Configuration (Used by Backend) ###`n"
+    foreach ($key in $rebuildConfig.Keys | Where-Object { $_ -notmatch '^(DEV_|PROD_)' } | Sort-Object) {
+        $configContent += "$key=$($rebuildConfig[$key])`n"
+    }
+    $configContent += "`n### DEVELOPMENT Profile ###`n"
+    foreach ($key in $rebuildConfig.Keys | Where-Object { $_ -match '^DEV_' } | Sort-Object) {
+        $configContent += "$key=$($rebuildConfig[$key])`n"
+    }
+    $configContent += "`n### PRODUCTION Profile ###`n"
+    foreach ($key in $rebuildConfig.Keys | Where-Object { $_ -match '^PROD_' } | Sort-Object) {
+        $configContent += "$key=$($rebuildConfig[$key])`n"
+    }
+    $configContent | Out-File -FilePath $configFile -Encoding UTF8
+    Write-Success "PROD_API_URL saved to .env: $API_URL"
     
     Set-Location $ProjectRoot
     return $true

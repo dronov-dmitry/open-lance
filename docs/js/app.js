@@ -76,6 +76,9 @@ window.utils = {
     },
     // Format currency
     formatCurrency(amount) {
+        if (window.currencyService) {
+            return window.currencyService.formatAmount(amount);
+        }
         return new Intl.NumberFormat('ru-RU', {
             style: 'currency',
             currency: 'RUB'
@@ -277,6 +280,11 @@ window.viewTaskDetails = function(taskId) {
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Open-Lance application initialized');
     console.log('Environment:', window.APP_CONFIG);
+
+    // Initialize currency service
+    if (window.currencyService) {
+        await window.currencyService.init();
+    }
     
     // Check API availability
     if (window.api && typeof window.api.checkHealth === 'function') {

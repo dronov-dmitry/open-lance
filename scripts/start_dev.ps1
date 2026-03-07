@@ -13,10 +13,12 @@ if (Test-Path $EnvFile) {
     $envContent = Get-Content $EnvFile -Raw
     
     # Extract Environment and API_URL
-    if ($envContent -match 'Environment=["'']?dev["'']?') {
+    # Use (?m) multiline + ^ anchor so we only match the ACTIVE "Environment=" line,
+    # not DEV_Environment or PROD_Environment lines
+    if ($envContent -match '(?m)^Environment="?dev"?') {
         $isLocalBackend = $false
     }
-    if ($envContent -match 'API_URL=["'']?(https://[^"''\s]+)["'']?') {
+    if ($envContent -match 'API_URL="?(https://[^"''\s]+)"?') {
         $backendUrl = $Matches[1]
     }
 }

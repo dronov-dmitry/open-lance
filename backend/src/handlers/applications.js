@@ -163,8 +163,154 @@ async function updateApplicationStatus(event) {
     }
 }
 
+/**
+ * Update application message (worker only)
+ * PUT /applications/:id/message
+ */
+async function updateApplicationMessage(event) {
+    try {
+        const userId = event.requestContext.authorizer.userId;
+        const applicationId = event.pathParameters.id;
+        const body = JSON.parse(event.body);
+
+        console.log('[updateApplicationMessage] User ID:', userId, 'Application ID:', applicationId);
+
+        if (!body.message || typeof body.message !== 'string') {
+            return response.badRequest('Message is required and must be a string');
+        }
+
+        const newMessage = body.message.trim();
+
+        if (newMessage.length < 10) {
+            return response.badRequest('Message must be at least 10 characters long');
+        }
+
+        // Get application
+        const application = await mongoManager.findOne('applications', {
+            application_id: applicationId
+        });
+
+        if (!application) {
+            return response.notFound('Application not found');
+        }
+
+        // Verify ownership
+        if (application.worker_id !== userId) {
+            return response.forbidden('You do not have permission to update this application');
+        }
+
+        // Verify task status
+        const task = await mongoManager.findOne('tasks', {
+            task_id: application.task_id
+        });
+
+        if (!task || task.status !== 'OPEN') {
+            return response.badRequest('Cannot update application for a closed or matched task');
+        }
+
+        const now = new Date().toISOString();
+
+        // Update application collection
+        const result = await mongoManager.updateOne(
+            'applications',
+            { application_id: applicationId },
+            {
+                $set: {
+                    message: newMessage,
+                    updated_at: now
+                }
+            }
+        );
+
+        // Update application inside task document array
+        await mongoManager.updateOne(
+            'tasks',
+            { 
+                task_id: application.task_id,
+                'applications.application_id': applicationId
+            },
+            {
+                $set: {
+                    'applications.$.message': newMessage,
+                    'applications.$.updated_at': now
+                }
+            }
+        );
+
+        return response.success({
+            message: 'Application message updated',
+            application: result.document
+        });
+    } catch (error) {
+        console.error('[updateApplicationMessage] Error:', error);
+        return response.serverError('Failed to update application message', error.message);
+    }
+}
+
+/**
+ * Withdraw application (worker only)
+ * DELETE /applications/:id
+ */
+async function deleteApplication(event) {
+    try {
+        const userId = event.requestContext.authorizer.userId;
+        const applicationId = event.pathParameters.id;
+
+        console.log('[deleteApplication] User ID:', userId, 'Application ID:', applicationId);
+
+        // Get application
+        const application = await mongoManager.findOne('applications', {
+            application_id: applicationId
+        });
+
+        if (!application) {
+            return response.notFound('Application not found');
+        }
+
+        // Verify ownership
+        if (application.worker_id !== userId) {
+            return response.forbidden('You do not have permission to delete this application');
+        }
+
+        // Verify task status
+        const task = await mongoManager.findOne('tasks', {
+            task_id: application.task_id
+        });
+
+        if (task && task.status !== 'OPEN' && application.status === 'ACCEPTED') {
+            return response.badRequest('Cannot withdraw an accepted application from a matched/closed task');
+        }
+
+        // Delete from applications collection
+        await mongoManager.deleteOne('applications', {
+            application_id: applicationId
+        });
+
+        // Remove from task applications array
+        await mongoManager.updateOne(
+            'tasks',
+            { task_id: application.task_id },
+            {
+                // Pull removes the array item entirely where application_id matches
+                $pull: {
+                    applications: { application_id: applicationId }
+                }
+            }
+        );
+
+        return response.success({
+            message: 'Application withdrawn successfully'
+        });
+    } catch (error) {
+        console.error('[deleteApplication] Error:', error);
+        return response.serverError('Failed to withdraw application', error.message);
+    }
+}
+
 module.exports = {
     getMyApplications,
     getTaskApplications,
-    updateApplicationStatus
+    updateApplicationStatus,
+    updateApplicationMessage,
+    deleteApplication
 };

@@ -1,0 +1,75 @@
+﻿
+==================================================
+ Open-Lance v2.0 Prerequisites Check
+==================================================
+
+Testing required tools...
+
+1. Checking Node.js...
+   [OK] Node.js found: v22.20.0
+
+2. Checking npm...
+   [OK] npm found: v11.6.4
+   [INFO] Detected Environment="local" in .env - Skipping Cloudflare deployment checks
+
+5. Checking Cloudflare Workers Secrets...
+   Checking .env file...
+   [OK] JWT_SECRET found in .env file
+   [OK] EMAILJS_SERVICE_ID found in .env file
+   [OK] MONGODB_URI found in .env file
+   [OK] EMAILJS_TEMPLATE_ID found in .env file
+   [OK] EMAILJS_PUBLIC_KEY found in .env file
+   [OK] EMAILJS_PRIVATE_KEY found in .env file
+
+   Required Secrets Status:
+   [OK] MONGODB_URI - Configured
+   [OK] JWT_SECRET - Configured
+
+   EmailJS Configuration (Optional):
+   [OK] EMAILJS_PUBLIC_KEY - Configured
+   [OK] EMAILJS_SERVICE_ID - Configured
+   [OK] EMAILJS_TEMPLATE_ID - Configured
+   [OK] EMAILJS_PRIVATE_KEY - Configured
+
+   [OK] EmailJS is fully configured and ready to send emails
+
+   [INFO] EmailJS secrets found in .env. Skipping Cloudflare Workers installation for local environment.
+
+6. Checking MongoDB Configuration...
+   [INFO] Using direct MongoDB connection (TCP)
+
+7. Checking MongoDB Connection...
+   [INFO] Testing connection to MongoDB Atlas...
+   [OK] Successfully connected to MongoDB Atlas
+
+8. Checking API and Login Endpoint...
+   [INFO] Testing API URL: http://127.0.0.1:8787
+   Testing health endpoint...
+   [ERROR] Health endpoint is not accessible
+   [INFO] Error: Невозможно соединиться с удаленным сервером
+   [INFO] Make sure backend is deployed: wrangler deploy
+   Testing login endpoint...
+   [ERROR] Login endpoint is not accessible (network error)
+   [INFO] Error: Unable to connect to the remote server
+   [INFO] Check if backend is deployed and URL is correct
+
+==================================================
+ Test Results
+==================================================
+
+[FAIL] Some required tools are missing
+
+Please install missing tools:
+  Node.js: https://nodejs.org/
+  Wrangler CLI: npm install -g wrangler
+
+After installation:
+  1. Restart PowerShell
+  2. Run this test again: .\scripts\test-deploy.ps1
+  3. Authenticate Cloudflare: wrangler login
+
+Documentation:
+  - Quick Start: QUICKSTART_MONGODB.md
+  - Full Guide:  DEPLOYMENT.md
+  - MongoDB Setup: MONGODB_ATLAS_SETUP.md
+

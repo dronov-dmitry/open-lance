@@ -251,6 +251,13 @@ class APIService {
         });
     }
 
+    async changePassword(oldPassword, newPassword) {
+        return this.post('/auth/change-password', {
+            old_password: oldPassword,
+            new_password: newPassword
+        });
+    }
+
     async resendVerificationEmail(email) {
         // This is a public endpoint, don't add auth token
         const timestamp = new Date().toISOString();
@@ -417,9 +424,8 @@ class APIService {
 
     // ===== Review Endpoints =====
 
-    async submitReview(taskId, rating, comment) {
-        return this.post(`/tasks/${taskId}/review`, {
-            action: 'submit_review',
+    async submitReview(userId, rating, comment) {
+        return this.post(`/users/${userId}/reviews`, {
             data: { rating, comment }
         });
     }
@@ -456,6 +462,16 @@ class APIService {
 
     async getMyApplications() {
         return this.get('/applications/me');
+    }
+
+    async updateApplicationMessage(applicationId, message) {
+        return this.put(`/applications/${applicationId}/message`, {
+            message: message
+        });
+    }
+
+    async deleteApplication(applicationId) {
+        return this.delete(`/applications/${applicationId}`);
     }
 }
 

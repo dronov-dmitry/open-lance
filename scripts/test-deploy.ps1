@@ -40,38 +40,55 @@ catch {
     $allOk = $false
 }
 
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot = Split-Path -Parent $ScriptDir
+$EnvPath = Join-Path $ProjectRoot ".env"
+
+$isLocalEnvironment = $false
+if (Test-Path $EnvPath) {
+    $EnvContent = Get-Content $EnvPath -Raw
+    if ($EnvContent -match 'Environment="local"') {
+        $isLocalEnvironment = $true
+        Write-Host "   [INFO] Detected Environment=`"local`" in .env - Skipping Cloudflare deployment checks" -ForegroundColor Cyan
+    }
+}
+
 # Test Wrangler CLI (Cloudflare)
-Write-Host "`n3. Checking Wrangler CLI..." -ForegroundColor Yellow
-try {
-    $wranglerVersion = wrangler --version 2>$null
-    if ($wranglerVersion) {
-        Write-Host "   [OK] Wrangler found: v$wranglerVersion" -ForegroundColor Green
-    } else {
+if (-not $isLocalEnvironment) {
+    Write-Host "`n3. Checking Wrangler CLI..." -ForegroundColor Yellow
+    try {
+        $wranglerVersion = wrangler --version 2>$null
+        if ($wranglerVersion) {
+            Write-Host "   [OK] Wrangler found: v$wranglerVersion" -ForegroundColor Green
+        } else {
+            Write-Host "   [ERROR] Wrangler not found" -ForegroundColor Red
+            Write-Host "   Run: npm install -g wrangler" -ForegroundColor Gray
+            $allOk = $false
+        }
+    }
+    catch {
         Write-Host "   [ERROR] Wrangler not found" -ForegroundColor Red
         Write-Host "   Run: npm install -g wrangler" -ForegroundColor Gray
         $allOk = $false
     }
 }
-catch {
-    Write-Host "   [ERROR] Wrangler not found" -ForegroundColor Red
-    Write-Host "   Run: npm install -g wrangler" -ForegroundColor Gray
-    $allOk = $false
-}
 
 # Check Cloudflare Authentication
-Write-Host "`n4. Checking Cloudflare Auth..." -ForegroundColor Yellow
-try {
-    $whoami = wrangler whoami 2>&1 | Out-String
-    if ($whoami -match "You are logged in") {
-        Write-Host "   [OK] Cloudflare authenticated" -ForegroundColor Green
-    } else {
+if (-not $isLocalEnvironment) {
+    Write-Host "`n4. Checking Cloudflare Auth..." -ForegroundColor Yellow
+    try {
+        $whoami = wrangler whoami 2>&1 | Out-String
+        if ($whoami -match "You are logged in") {
+            Write-Host "   [OK] Cloudflare authenticated" -ForegroundColor Green
+        } else {
+            Write-Host "   [WARN] Cloudflare not authenticated" -ForegroundColor Yellow
+            Write-Host "   Run: wrangler login" -ForegroundColor Gray
+        }
+    }
+    catch {
         Write-Host "   [WARN] Cloudflare not authenticated" -ForegroundColor Yellow
         Write-Host "   Run: wrangler login" -ForegroundColor Gray
     }
-}
-catch {
-    Write-Host "   [WARN] Cloudflare not authenticated" -ForegroundColor Yellow
-    Write-Host "   Run: wrangler login" -ForegroundColor Gray
 }
 
 # Check Cloudflare Workers Secrets
@@ -92,26 +109,35 @@ $requiredSecrets = @{
 }
 
 # Check secrets in Cloudflare Workers
-Write-Host "   Checking Cloudflare Workers secrets..." -ForegroundColor Cyan
-$secretsInCloudflare = @{}
-$secretsInEnv = @{}
+if (-not $isLocalEnvironment) {
+    Write-Host "   Checking Cloudflare Workers secrets..." -ForegroundColor Cyan
+    $secretsInCloudflare = @{}
+    $secretsInEnv = @{}
 
-try {
-    $secretsList = wrangler secret list 2>&1 | Out-String
-    
-    foreach ($secretName in $requiredSecrets.Keys) {
-        if ($secretsList -match $secretName) {
-            $secretsInCloudflare[$secretName] = $true
-            Write-Host "   [OK] $secretName found in Cloudflare Workers secrets" -ForegroundColor Green
-        } else {
-            $secretsInCloudflare[$secretName] = $false
-            Write-Host "   [MISSING] $secretName not found in Cloudflare Workers secrets" -ForegroundColor Yellow
+    try {
+        $secretsList = wrangler secret list 2>&1 | Out-String
+        
+        foreach ($secretName in $requiredSecrets.Keys) {
+            if ($secretsList -match $secretName) {
+                $secretsInCloudflare[$secretName] = $true
+                Write-Host "   [OK] $secretName found in Cloudflare Workers secrets" -ForegroundColor Green
+            } else {
+                $secretsInCloudflare[$secretName] = $false
+                Write-Host "   [MISSING] $secretName not found in Cloudflare Workers secrets" -ForegroundColor Yellow
+            }
         }
+    } catch {
+        Write-Host "   [WARN] Could not check Cloudflare Workers secrets" -ForegroundColor Yellow
+        Write-Host "   Make sure you're authenticated: wrangler login" -ForegroundColor Gray
+        Write-Host "   Error: $($_.Exception.Message)" -ForegroundColor Red
     }
-} catch {
-    Write-Host "   [WARN] Could not check Cloudflare Workers secrets" -ForegroundColor Yellow
-    Write-Host "   Make sure you're authenticated: wrangler login" -ForegroundColor Gray
-    Write-Host "   Error: $($_.Exception.Message)" -ForegroundColor Red
+} else {
+    $secretsInCloudflare = @{}
+    $secretsInEnv = @{}
+
+    foreach ($secretName in $requiredSecrets.Keys) {
+        $secretsInCloudflare[$secretName] = $false
+    }
 }
 
 # Check secrets in .env file (local development)
@@ -189,69 +215,74 @@ if ($emailjsFound.Count -eq 4) {
     
     if ($emailjsInEnv.Count -eq 4 -and $emailjsInCloudflare.Count -lt 4) {
         Write-Host ""
-        Write-Host "   [WARN] EmailJS secrets found in .env but NOT in Cloudflare Workers!" -ForegroundColor Yellow
-        Write-Host "   Secrets must be set in Cloudflare Workers for production deployment." -ForegroundColor Yellow
-        Write-Host ""
         
-        $installSecrets = Read-Host "   Install EmailJS secrets from .env to Cloudflare Workers now? (y/n)"
-        if ($installSecrets -eq "y" -or $installSecrets -eq "Y") {
+        if ($isLocalEnvironment) {
+            Write-Host "   [INFO] EmailJS secrets found in .env. Skipping Cloudflare Workers installation for local environment." -ForegroundColor Cyan
+        } else {
+            Write-Host "   [WARN] EmailJS secrets found in .env but NOT in Cloudflare Workers!" -ForegroundColor Yellow
+            Write-Host "   Secrets must be set in Cloudflare Workers for production deployment." -ForegroundColor Yellow
             Write-Host ""
-            Write-Host "   Installing EmailJS secrets to Cloudflare Workers..." -ForegroundColor Cyan
             
-            $backendDir = Join-Path $ProjectRoot "backend"
-            $prevLocation = Get-Location
-            Set-Location $backendDir
-            
-            foreach ($secretName in $emailjsSecrets) {
-                $inCloudflare = $secretsInCloudflare.ContainsKey($secretName) -and $secretsInCloudflare[$secretName]
-                if (-not $inCloudflare) {
-                    Write-Host "   Installing $secretName..." -ForegroundColor Gray
-                    
-                    # Extract value from .env
-                    $envLine = Get-Content $EnvPath | Where-Object { $_ -match "^$secretName=" }
-                    if ($envLine) {
-                        $secretValue = $envLine -replace "^$secretName=", "" -replace '^"', '' -replace '"$', '' -replace "^'", '' -replace "'$", ''
+            $installSecrets = Read-Host "   Install EmailJS secrets from .env to Cloudflare Workers now? (y/n)"
+            if ($installSecrets -eq "y" -or $installSecrets -eq "Y") {
+                Write-Host ""
+                Write-Host "   Installing EmailJS secrets to Cloudflare Workers..." -ForegroundColor Cyan
+                
+                $backendDir = Join-Path $ProjectRoot "backend"
+                $prevLocation = Get-Location
+                Set-Location $backendDir
+                
+                foreach ($secretName in $emailjsSecrets) {
+                    $inCloudflare = $secretsInCloudflare.ContainsKey($secretName) -and $secretsInCloudflare[$secretName]
+                    if (-not $inCloudflare) {
+                        Write-Host "   Installing $secretName..." -ForegroundColor Gray
                         
-                        if ($secretValue) {
-                            $tempFile = Join-Path $env:TEMP "$secretName.txt"
-                            [IO.File]::WriteAllText($tempFile, $secretValue)
-                            $result = cmd.exe /c "wrangler secret put $secretName < ""$tempFile""" 2>&1
-                            Remove-Item $tempFile -ErrorAction SilentlyContinue
+                        # Extract value from .env
+                        $envLine = Get-Content $EnvPath | Where-Object { $_ -match "^$secretName=" }
+                        if ($envLine) {
+                            $secretValue = $envLine -replace "^$secretName=", "" -replace '^"', '' -replace '"$', '' -replace "^'", '' -replace "'$", ''
                             
-                            if ($result -match "error|failed" -and $result -notmatch "Created|Updated") {
-                                Write-Host "   [ERROR] Failed to set $secretName" -ForegroundColor Red
-                                Write-Host "   $result" -ForegroundColor Gray
+                            if ($secretValue) {
+                                $tempFile = Join-Path $env:TEMP "$secretName.txt"
+                                [IO.File]::WriteAllText($tempFile, $secretValue)
+                                $result = cmd.exe /c "wrangler secret put $secretName < ""$tempFile""" 2>&1
+                                Remove-Item $tempFile -ErrorAction SilentlyContinue
+                                
+                                if ($result -match "error|failed" -and $result -notmatch "Created|Updated") {
+                                    Write-Host "   [ERROR] Failed to set $secretName" -ForegroundColor Red
+                                    Write-Host "   $result" -ForegroundColor Gray
+                                } else {
+                                    Write-Host "   [OK] $secretName installed successfully" -ForegroundColor Green
+                                }
                             } else {
-                                Write-Host "   [OK] $secretName installed successfully" -ForegroundColor Green
+                                Write-Host "   [WARN] $secretName value is empty in .env" -ForegroundColor Yellow
                             }
                         } else {
-                            Write-Host "   [WARN] $secretName value is empty in .env" -ForegroundColor Yellow
+                            Write-Host "   [WARN] $secretName not found in .env" -ForegroundColor Yellow
                         }
                     } else {
-                        Write-Host "   [WARN] $secretName not found in .env" -ForegroundColor Yellow
+                        Write-Host "   [SKIP] $secretName already set in Cloudflare Workers" -ForegroundColor Cyan
                     }
-                } else {
-                    Write-Host "   [SKIP] $secretName already set in Cloudflare Workers" -ForegroundColor Cyan
                 }
-            }
-            
-            Set-Location $prevLocation
-            Write-Host ""
-            Write-Host "   [OK] EmailJS secrets installation completed!" -ForegroundColor Green
-            Write-Host "   Please redeploy your Worker: cd backend && wrangler deploy" -ForegroundColor Cyan
-        } else {
-            Write-Host ""
-            Write-Host "   To install manually, run these commands:" -ForegroundColor Cyan
-            Write-Host "     cd backend" -ForegroundColor Gray
-            foreach ($secretName in $emailjsSecrets) {
-                $inCloudflare = $secretsInCloudflare.ContainsKey($secretName) -and $secretsInCloudflare[$secretName]
-                if (-not $inCloudflare) {
-                    Write-Host "     # Install ${secretName}:" -ForegroundColor Gray
-                    Write-Host "     Get-Content ..\.env | Select-String '${secretName}=' | ForEach-Object { `$_.Line -replace '.*=', '' -replace '`"', '' } | wrangler secret put ${secretName}" -ForegroundColor Gray
+                
+                Set-Location $prevLocation
+                Write-Host ""
+                Write-Host "   [OK] EmailJS secrets installation completed!" -ForegroundColor Green
+                Write-Host "   Please redeploy your Worker: cd backend && wrangler deploy" -ForegroundColor Cyan
+            } else {
+                Write-Host ""
+                Write-Host "   To install manually, run these commands:" -ForegroundColor Cyan
+                Write-Host "     cd backend" -ForegroundColor Gray
+                foreach ($secretName in $emailjsSecrets) {
+                    $inCloudflare = $secretsInCloudflare.ContainsKey($secretName) -and $secretsInCloudflare[$secretName]
+                    if (-not $inCloudflare) {
+                        Write-Host "     # Install ${secretName}:" -ForegroundColor Gray
+                        Write-Host "     Get-Content ..\.env | Select-String '${secretName}=' | ForEach-Object { `$_.Line -replace '.*=', '' -replace '`"', '' } | wrangler secret put ${secretName}" -ForegroundColor Gray
+                    }
                 }
+                Write-Host ""
+                Write-Host "   Or run deployment script: .\scripts\deploy.ps1" -ForegroundColor Cyan
             }
-            Write-Host ""
-            Write-Host "   Or run deployment script: .\scripts\deploy.ps1" -ForegroundColor Cyan
         }
     }
 } elseif ($emailjsFound.Count -gt 0) {
@@ -294,17 +325,19 @@ Write-Host "`n6. Checking MongoDB Configuration..." -ForegroundColor Yellow
 $mongoDataApiFound = $false
 
 # Check MongoDB Data API in Cloudflare Workers secrets
-Write-Host "   Checking Cloudflare Workers secrets..." -ForegroundColor Cyan
-try {
-    $secretsList = wrangler secret list 2>&1 | Out-String
-    if ($secretsList -match "MONGODB_API_KEY") {
-        Write-Host "   [INFO] MONGODB_API_KEY found in Cloudflare Workers secrets (using Data API)" -ForegroundColor Cyan
-        $mongoDataApiFound = $true
-    } else {
-        Write-Host "   [INFO] MONGODB_API_KEY not found (using direct connection)" -ForegroundColor Yellow
+if (-not $isLocalEnvironment) {
+    Write-Host "   Checking Cloudflare Workers secrets..." -ForegroundColor Cyan
+    try {
+        $secretsList = wrangler secret list 2>&1 | Out-String
+        if ($secretsList -match "MONGODB_API_KEY") {
+            Write-Host "   [INFO] MONGODB_API_KEY found in Cloudflare Workers secrets (using Data API)" -ForegroundColor Cyan
+            $mongoDataApiFound = $true
+        } else {
+            Write-Host "   [INFO] MONGODB_API_KEY not found (using direct connection)" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "   [WARN] Could not check Cloudflare Workers secrets" -ForegroundColor Yellow
     }
-} catch {
-    Write-Host "   [WARN] Could not check Cloudflare Workers secrets" -ForegroundColor Yellow
 }
 
 # Check MongoDB Data API in .env file
@@ -703,16 +736,26 @@ if ($allOk -and -not $loginHasIssue) {
     }
     Write-Host ""
 } else {
-    Write-Host "`n[FAIL] Some required tools are missing" -ForegroundColor Red
-    Write-Host "`nPlease install missing tools:" -ForegroundColor Yellow
-    Write-Host "  Node.js: https://nodejs.org/" -ForegroundColor Gray
-    Write-Host "  Wrangler CLI: npm install -g wrangler" -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "After installation:" -ForegroundColor Yellow
-    Write-Host "  1. Restart PowerShell" -ForegroundColor Gray
-    Write-Host "  2. Run this test again: .\scripts\test-deploy.ps1" -ForegroundColor Gray
-    Write-Host "  3. Authenticate Cloudflare: wrangler login" -ForegroundColor Gray
-    Write-Host ""
+    if ($isLocalEnvironment) {
+        Write-Host "`n[OK] Tested local environment constraints. Skipping Cloudflare-specific tools." -ForegroundColor Green
+        Write-Host "`nYou are ready to deploy locally!" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "Next steps:" -ForegroundColor Cyan
+        Write-Host "  1. Start local servers: .\scripts\start_dev.ps1" -ForegroundColor Gray
+        Write-Host "  2. Open http://localhost:8080" -ForegroundColor Gray
+        Write-Host ""
+    } else {
+        Write-Host "`n[FAIL] Some required tools are missing" -ForegroundColor Red
+        Write-Host "`nPlease install missing tools:" -ForegroundColor Yellow
+        Write-Host "  Node.js: https://nodejs.org/" -ForegroundColor Gray
+        Write-Host "  Wrangler CLI: npm install -g wrangler" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "After installation:" -ForegroundColor Yellow
+        Write-Host "  1. Restart PowerShell" -ForegroundColor Gray
+        Write-Host "  2. Run this test again: .\scripts\test-deploy.ps1" -ForegroundColor Gray
+        Write-Host "  3. Authenticate Cloudflare: wrangler login" -ForegroundColor Gray
+        Write-Host ""
+    }
 }
 
 Write-Host "Documentation:" -ForegroundColor Cyan

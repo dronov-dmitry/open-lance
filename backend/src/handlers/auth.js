@@ -565,9 +565,101 @@ async function resendVerificationEmail(event) {
     }
 }
 
+/**
+ * Change Password handler (POST /auth/change-password)
+ * Requires JWT token
+ */
+async function changePassword(event) {
+    try {
+        const userId = event.requestContext.authorizer.userId;
+        
+        if (!event.body) {
+            return {
+                statusCode: 400,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: 'Тело запроса пустое' })
+            };
+        }
+
+        let body;
+        try {
+            body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+        } catch (e) {
+            return {
+                statusCode: 400,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: 'Неверный формат JSON' })
+            };
+        }
+
+        const { old_password, new_password } = body;
+
+        if (!old_password || !new_password) {
+            return {
+                statusCode: 400,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: 'Необходимо указать старый и новый пароль' })
+            };
+        }
+
+        if (new_password.length < 6) {
+            return {
+                statusCode: 400,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: 'Новый пароль должен содержать минимум 6 символов' })
+            };
+        }
+
+        // Find user
+        const user = await mongoManager.findOne('users', { user_id: userId });
+        
+        if (!user) {
+            return response.notFound('Пользователь не найден');
+        }
+
+        // Verify old password
+        // TODO: Update to use bcrypt when hashed passwords are implemented
+        if (user.password_hash !== old_password) {
+            return {
+                statusCode: 400,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: 'Неверный старый пароль' })
+            };
+        }
+
+        // Update password
+        const now = new Date().toISOString();
+        await mongoManager.updateOne(
+            'users',
+            { user_id: userId },
+            { 
+                $set: { 
+                    password_hash: new_password,
+                    updated_at: now
+                }
+            }
+        );
+
+        return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: 'Пароль успешно изменен' })
+        };
+
+    } catch (error) {
+        console.error('Change password error:', error);
+        return {
+            statusCode: 500,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Ошибка сервера: ' + error.message })
+        };
+    }
+}
+
 module.exports = {
     login,
     register,
     verifyEmail,
-    resendVerificationEmail
+    resendVerificationEmail,
+    changePassword
 };

@@ -239,6 +239,15 @@ async function handleRequest(request, env) {
 
         event.requestContext.authorizer = authResult.decoded;
 
+        // Protected Auth routes
+        if (path === '/auth/change-password' && method === 'POST') {
+            const result = await authHandlers.changePassword(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
         // Task routes
         if (path === '/tasks' && method === 'GET') {
             const result = await taskHandlers.getTasks(event);
@@ -442,6 +451,24 @@ async function handleRequest(request, env) {
         if (path.match(/^\/applications\/[^/]+$/) && method === 'PUT') {
             event.pathParameters.id = path.split('/')[2];
             const result = await applicationHandlers.updateApplicationStatus(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        if (path.match(/^\/applications\/[^/]+\/message$/) && method === 'PUT') {
+            event.pathParameters.id = path.split('/')[2];
+            const result = await applicationHandlers.updateApplicationMessage(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        if (path.match(/^\/applications\/[^/]+$/) && method === 'DELETE') {
+            event.pathParameters.id = path.split('/')[2];
+            const result = await applicationHandlers.deleteApplication(event);
             return addCorsHeaders(new Response(result.body, {
                 status: result.statusCode,
                 headers: { 'Content-Type': 'application/json' }

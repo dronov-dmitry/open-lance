@@ -57,19 +57,70 @@ window.router.register('task-details', async function(props) {
 
         // Worker application logic
         let actionFormHtml = '';
+        
+        // Find existing application by current user
+        let myApplication = null;
+        if (window.auth.isLoggedIn() && currentUserId && !isOwner && task.applications && Array.isArray(task.applications)) {
+            myApplication = task.applications.find(app => app.worker_id === currentUserId);
+        }
+
         if (task.status === 'OPEN' && window.auth.isLoggedIn() && !isOwner) {
-            actionFormHtml = `
-                <div class="card" style="margin-top: 2rem;">
-                    <h3>Откликнуться на задачу</h3>
-                    <form id="applyTaskForm" onsubmit="submitApplication(event, '${taskId}')">
-                        <div class="form-group" style="margin-top: 1rem;">
-                            <label for="applyMessage">Сообщение заказчику</label>
-                            <textarea id="applyMessage" required rows="4" placeholder="Опишите ваш опыт и почему вы подходите для этой задачи..."></textarea>
+            if (myApplication) {
+                // User has already applied
+                const statusStyles = {
+                    'PENDING': { color: '#f39c12', text: 'Ожидает рассмотрения' },
+                    'ACCEPTED': { color: '#2ecc71', text: 'Одобрен' },
+                    'REJECTED': { color: '#e74c3c', text: 'Отклонен' }
+                };
+                const appStatus = statusStyles[myApplication.status] || { color: '#7f8c8d', text: myApplication.status };
+
+                actionFormHtml = `
+                    <div class="card" style="margin-top: 2rem;">
+                        <h3>Ваш отклик</h3>
+                        <div style="margin-top: 15px; padding: 15px; border: 1px solid #eee; border-radius: 8px; background: #fafafa;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <strong style="color: ${appStatus.color};">${appStatus.text}</strong>
+                                <span style="font-size: 0.85rem; color: #95a5a6;">${window.utils.formatDate(myApplication.updated_at || myApplication.created_at)}</span>
+                            </div>
+                            
+                            <div id="my-application-view">
+                                <p style="white-space: pre-wrap; color: #34495e; line-height: 1.5; margin-bottom: 20px;">${myApplication.message}</p>
+                                
+                                ${myApplication.status === 'PENDING' ? `
+                                    <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px;">
+                                        <button onclick="window.toggleEditMyApplication()" class="btn btn-outline">Изменить отклик</button>
+                                        <button onclick="window.withdrawMyApplication('${myApplication.application_id}')" class="btn btn-outline" style="color: #e74c3c; border-color: #e74c3c;">Отозвать отклик</button>
+                                    </div>
+                                ` : ''}
+                            </div>
+
+                            <div id="my-application-edit" style="display: none;">
+                                <form onsubmit="window.saveMyApplication(event, '${myApplication.application_id}')">
+                                    <textarea id="editApplicationMessage" required rows="4" style="width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; font-family: inherit; resize: vertical; margin-bottom: 15px;">${myApplication.message}</textarea>
+                                    <div style="display: flex; gap: 10px;">
+                                        <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+                                        <button type="button" onclick="window.toggleEditMyApplication()" class="btn btn-outline">Отмена</button>
+                                    </div>
+                                </form>
+                            </div>
                         </div>
-                        <button type="submit" class="btn btn-primary">Отправить отклик</button>
-                    </form>
-                </div>
-            `;
+                    </div>
+                `;
+            } else {
+                // User hasn't applied yet
+                actionFormHtml = `
+                    <div class="card" style="margin-top: 2rem;">
+                        <h3>Откликнуться на задачу</h3>
+                        <form id="applyTaskForm" onsubmit="submitApplication(event, '${taskId}')">
+                            <div class="form-group" style="margin-top: 1rem;">
+                                <label for="applyMessage">Сообщение заказчику</label>
+                                <textarea id="applyMessage" required rows="4" placeholder="Опишите ваш опыт и почему вы подходите для этой задачи..."></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Отправить отклик</button>
+                        </form>
+                    </div>
+                `;
+            }
         } else if (!window.auth.isLoggedIn()) {
             actionFormHtml = `
                 <div class="card" style="margin-top: 2rem; text-align: center;">
@@ -108,10 +159,32 @@ window.router.register('task-details', async function(props) {
                                             <button onclick="window.toggleInlineMessageForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">✉️ Сообщение</button>
                                         </div>
                                     ` : app.status === 'ACCEPTED' ? `
-                                        <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px;">
+                                        <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px; flex-wrap: wrap;">
                                             <button onclick="window.updateApplicationStatus('${app.application_id}', 'REJECTED', '${taskId}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem; color: #e74c3c; border-color: #e74c3c;">Отменить кандидата</button>
                                             <button onclick="window.router.navigate('profile', { id: '${app.worker_id}' })" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">Профиль исполнителя</button>
                                             <button onclick="window.toggleInlineMessageForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">✉️ Написать</button>
+                                            <button onclick="window.toggleInlineReviewForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">⭐ Отзыв</button>
+                                        </div>
+                                        <div id="inline-review-form-${app.worker_id}" style="display: none; margin-top: 15px; padding: 15px; border: 1px solid #f39c12; border-radius: 8px; background: #fffdf5;">
+                                            <h4 style="margin: 0 0 12px 0; color: #2c3e50;">Оставить отзыв</h4>
+                                            <div style="margin-bottom: 10px;">
+                                                <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.9rem;">Оценка</label>
+                                                <select id="inline-review-rating-${app.worker_id}" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-family: inherit;">
+                                                    <option value="5">⭐⭐⭐⭐⭐ (5) Отлично</option>
+                                                    <option value="4">⭐⭐⭐⭐ (4) Хорошо</option>
+                                                    <option value="3">⭐⭐⭐ (3) Нормально</option>
+                                                    <option value="2">⭐⭐ (2) Плохо</option>
+                                                    <option value="1">⭐ (1) Ужасно</option>
+                                                </select>
+                                            </div>
+                                            <div style="margin-bottom: 10px;">
+                                                <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.9rem;">Комментарий</label>
+                                                <textarea id="inline-review-text-${app.worker_id}" rows="3" placeholder="Расскажите об опыте работы с исполнителем..." style="width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
+                                            </div>
+                                            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                                                <button onclick="window.toggleInlineReviewForm('${app.worker_id}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem;">Отмена</button>
+                                                <button onclick="window.submitInlineReview('${app.worker_id}')" class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">Опубликовать</button>
+                                            </div>
                                         </div>
                                     ` : app.status === 'REJECTED' ? `
                                         <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px;">
@@ -254,6 +327,69 @@ window.submitApplication = async function(event, taskId) {
     }
 };
 
+// Toggle edit form for user's own application
+window.toggleEditMyApplication = function() {
+    const viewEl = document.getElementById('my-application-view');
+    const editEl = document.getElementById('my-application-edit');
+    if (viewEl && editEl) {
+        if (viewEl.style.display === 'none') {
+            viewEl.style.display = 'block';
+            editEl.style.display = 'none';
+        } else {
+            viewEl.style.display = 'none';
+            editEl.style.display = 'block';
+        }
+    }
+};
+
+// Save edited application
+window.saveMyApplication = async function(event, applicationId) {
+    event.preventDefault();
+    const btn = event.target.querySelector('button[type="submit"]');
+    const message = document.getElementById('editApplicationMessage').value;
+
+    if (!message || message.trim().length < 10) {
+        window.utils.showToast('Сообщение должно быть не менее 10 символов', 'warning');
+        return;
+    }
+
+    try {
+        btn.disabled = true;
+        btn.textContent = 'Сохранение...';
+
+        await window.api.updateApplicationMessage(applicationId, message);
+        window.utils.showToast('Отклик успешно обновлен!', 'success');
+        
+        // Refresh page
+        const props = window.router.getRouteParams();
+        window.router.navigate('task-details', { id: props.id || window.location.hash.split('/')[1] }, { force: true });
+    } catch (error) {
+        console.error('Error updating application:', error);
+        window.utils.showToast(error.message || 'Ошибка при обновлении отклика', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Сохранить изменения';
+    }
+};
+
+// Withdraw application
+window.withdrawMyApplication = async function(applicationId) {
+    if (!confirm('Вы уверены, что хотите отозвать свой отклик?')) {
+        return;
+    }
+
+    try {
+        await window.api.deleteApplication(applicationId);
+        window.utils.showToast('Отклик отозван', 'success');
+        
+        // Refresh page
+        const props = window.router.getRouteParams();
+        window.router.navigate('task-details', { id: props.id || window.location.hash.split('/')[1] }, { force: true });
+    } catch (error) {
+        console.error('Error withdrawing application:', error);
+        window.utils.showToast(error.message || 'Ошибка при отзыве отклика', 'error');
+    }
+};
+
 // Handle application status update (accept/reject)
 window.updateApplicationStatus = async function(applicationId, newStatus, taskId) {
     if (!confirm(`Вы уверены, что хотите ${newStatus === 'ACCEPTED' ? 'принять' : 'отклонить'} этого кандидата?`)) {
@@ -278,6 +414,46 @@ window.updateApplicationStatus = async function(applicationId, newStatus, taskId
     } catch (error) {
         console.error('[TaskDetails] Error updating application:', error);
         window.utils.showToast(error.message || 'Ошибка обновления статуса', 'error');
+    }
+};
+
+// Handle inline review form toggle
+window.toggleInlineReviewForm = function(workerId) {
+    const formEl = document.getElementById(`inline-review-form-${workerId}`);
+    if (formEl) {
+        formEl.style.display = formEl.style.display === 'none' ? 'block' : 'none';
+    }
+};
+
+// Submit inline review for accepted worker
+window.submitInlineReview = async function(workerId) {
+    const ratingEl = document.getElementById(`inline-review-rating-${workerId}`);
+    const textEl = document.getElementById(`inline-review-text-${workerId}`);
+    const rating = parseInt(ratingEl ? ratingEl.value : '5', 10);
+    const comment = textEl ? textEl.value.trim() : '';
+
+    if (comment.length < 5) {
+        window.utils.showToast('Отзыв слишком короткий (минимум 5 символов)', 'warning');
+        return;
+    }
+
+    try {
+        const btn = document.querySelector(`#inline-review-form-${workerId} .btn-primary`);
+        if (btn) { btn.disabled = true; btn.textContent = 'Отправка...'; }
+
+        await window.api.submitProfileReview(workerId, rating, comment);
+        window.utils.showToast('Отзыв успешно добавлен!', 'success');
+
+        // Hide and reset form
+        if (textEl) textEl.value = '';
+        window.toggleInlineReviewForm(workerId);
+
+        if (btn) { btn.disabled = false; btn.textContent = 'Опубликовать'; }
+    } catch (error) {
+        console.error('Error submitting review:', error);
+        window.utils.showToast(error.message || 'Ошибка при отправке отзыва', 'error');
+        const btn = document.querySelector(`#inline-review-form-${workerId} .btn-primary`);
+        if (btn) { btn.disabled = false; btn.textContent = 'Опубликовать'; }
     }
 };
 
