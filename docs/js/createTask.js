@@ -5,17 +5,27 @@
         const createTaskModal = document.getElementById('createTaskModal');
         const createTaskForm = document.getElementById('createTaskForm');
         
-        if (!createTaskBtn || !createTaskModal || !createTaskForm) {
+        if (!createTaskModal || !createTaskForm) {
             console.log('[CreateTask] Elements not found, skipping init');
             return;
         }
+
+        // Set minimum date for deadline to tomorrow
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const taskDeadlineInput = document.getElementById('taskDeadline');
+        if (taskDeadlineInput) {
+            taskDeadlineInput.min = tomorrow.toISOString().split('T')[0];
+        }
         
-        // Open modal on button click
-        createTaskBtn.addEventListener('click', () => {
-            const timestamp = new Date().toISOString();
-            console.log(`[${timestamp}] [CreateTask] Opening create task modal`);
-            createTaskModal.classList.add('active');
-        });
+        // Open modal on old header button click if it exists
+        if (createTaskBtn) {
+            createTaskBtn.addEventListener('click', () => {
+                const timestamp = new Date().toISOString();
+                console.log(`[${timestamp}] [CreateTask] Opening create task modal`);
+                createTaskModal.classList.add('active');
+            });
+        }
         
         // Close modal on X click
         const closeBtn = createTaskModal.querySelector('.close');
@@ -75,11 +85,12 @@
                 ? skillsInput.split(',').map(s => s.trim()).filter(s => s.length > 0)
                 : [];
             
-            // Prepare task data
+            // Prepare task data (backend expects category and budget_estimate)
             const taskData = {
                 title,
                 description,
-                budget,
+                category: 'Development', // default category since there is no UI input for it yet
+                budget_estimate: budget,
                 deadline,
                 skills
             };
@@ -98,6 +109,10 @@
                 console.log(`[${successTime}] [CreateTask] Task created successfully:`, response);
                 
                 window.utils.showToast('Задача успешно создана!', 'success');
+                
+                // Invalidate my-tasks cache so the new task appears immediately
+                localStorage.removeItem('my-tasks-cache');
+                localStorage.removeItem('my-tasks-cache-time');
                 
                 // Close modal and reset form
                 createTaskModal.classList.remove('active');

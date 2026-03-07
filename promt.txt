@@ -45,3 +45,12 @@ Database Schema: Проект коллекций в MongoDB (Users, Tasks, Revie
 API Integration: Реализация CRUD операций с проверкой авторизации через Clerk JWT.
 
 Documentation: Краткая инструкция по настройке окружения (Environment Variables) и CORS.
+
+
+
+
+а как быть если я хочу опубликовать этот сайт чтоб он работал на github-pages ? и чтоб он работал там? где должны хранится данные из папки .env?
+
+
+test-deploy.ps1
+ не вижу проверки сервиса resend можно ли проверить что он настроен?

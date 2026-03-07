@@ -8,6 +8,31 @@ const response = require('../utils/response');
 const validation = require('../utils/validation');
 
 /**
+ * Get all users
+ */
+async function getUsers(event) {
+    try {
+        const users = await mongoManager.find('users', {});
+
+        // Remove sensitive data
+        const safeUsers = users.map(user => {
+            const safeUser = { ...user };
+            delete safeUser.password_hash;
+            delete safeUser._id;
+            // Hide contact links by default for privacy
+            delete safeUser.contact_links;
+            // Kept role and status for Admin UI
+            return safeUser;
+        });
+
+        return response.success(safeUsers);
+    } catch (error) {
+        console.error('Error getting users:', error);
+        return response.serverError('Failed to get users', error.message);
+    }
+}
+
+/**
  * Get user profile
  */
 async function getProfile(event) {
@@ -66,7 +91,7 @@ async function updateProfile(event) {
         const updates = {};
         
         // Only allow updating certain fields
-        const allowedFields = ['contact_links'];
+        const allowedFields = ['contact_links', 'name', 'title', 'bio', 'avatar_url'];
         
         for (const field of allowedFields) {
             if (profileData[field] !== undefined) {
@@ -76,8 +101,13 @@ async function updateProfile(event) {
                         label: validation.sanitizeString(link.label, 50),
                         url: link.url
                     }));
+                } else if (['name', 'title'].includes(field)) {
+                    updates[field] = validation.sanitizeString(profileData[field], 100);
+                } else if (field === 'bio') {
+                    // Bio needs to allow basic newlines, sanitizeString strips tags but keeps text
+                    updates[field] = validation.sanitizeString(profileData[field], 1000);
                 } else {
-                    updates[field] = profileData[field];
+                    updates[field] = profileData[field]; // avatar_url (validated previously)
                 }
             }
         }
@@ -259,10 +289,83 @@ async function updateRating(userId, isClient, newRating) {
     }
 }
 
+/**
+ * Update user role (ADMIN ONLY)
+ */
+async function updateUserRole(event) {
+    try {
+        const body = JSON.parse(event.body);
+        const { targetUserId, newRole } = body.data || body;
+        const currentUserId = event.requestContext.authorizer.userId;
+        const currentUserRole = event.requestContext.authorizer.role;
+
+        if (currentUserRole !== 'ADMIN') {
+            return response.error('Forbidden: Requires ADMIN role', 403);
+        }
+
+        if (!targetUserId || !['USER', 'ADMIN'].includes(newRole)) {
+            return response.error('Invalid targetUserId or role (USER/ADMIN only)', 400);
+        }
+
+        const result = await mongoManager.updateOne(
+            'users',
+            { user_id: targetUserId },
+            { $set: { role: newRole, updated_at: new Date().toISOString() } },
+            { returnUpdatedDocument: true }
+        );
+
+        if (!result.modifiedCount) {
+            return response.notFound('User not found or role unchanged');
+        }
+
+        return response.success({ message: `Role updated to ${newRole}`, user_id: targetUserId });
+    } catch (error) {
+        console.error('Error updating user role:', error);
+        return response.serverError('Failed to update user role', error.message);
+    }
+}
+
+/**
+ * Update user status/Ban (ADMIN ONLY)
+ */
+async function updateUserStatus(event) {
+    try {
+        const body = JSON.parse(event.body);
+        const { targetUserId, newStatus } = body.data || body;
+        const currentUserRole = event.requestContext.authorizer.role;
+
+        if (currentUserRole !== 'ADMIN') {
+            return response.error('Forbidden: Requires ADMIN role', 403);
+        }
+
+        if (!targetUserId || !['ACTIVE', 'BANNED'].includes(newStatus)) {
+            return response.error('Invalid targetUserId or status (ACTIVE/BANNED only)', 400);
+        }
+
+        const result = await mongoManager.updateOne(
+            'users',
+            { user_id: targetUserId },
+            { $set: { status: newStatus, updated_at: new Date().toISOString() } }
+        );
+
+        if (!result.modifiedCount) {
+            return response.notFound('User not found or status unchanged');
+        }
+
+        return response.success({ message: `User status changed to ${newStatus}`, user_id: targetUserId });
+    } catch (error) {
+        console.error('Error updating user status:', error);
+        return response.serverError('Failed to update user status', error.message);
+    }
+}
+
 module.exports = {
+    getUsers,
     getProfile,
     updateProfile,
     addContactLink,
     removeContactLink,
-    updateRating
+    updateRating,
+    updateUserRole,
+    updateUserStatus
 };

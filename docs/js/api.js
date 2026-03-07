@@ -7,11 +7,12 @@ class APIService {
     }
 
     // Get auth token from memory
+    // Get auth token from memory or localStorage
     getAuthToken() {
-        return window.authToken || null;
+        return window.authToken || localStorage.getItem('authToken');
     }
 
-    // Set auth token in memory (never in localStorage for security)
+    // Set auth token in memory
     setAuthToken(token) {
         window.authToken = token;
     }
@@ -19,6 +20,31 @@ class APIService {
     // Clear auth token
     clearAuthToken() {
         window.authToken = null;
+    }
+
+    // Check if API is available
+    async checkHealth() {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            
+            const response = await fetch(`${this.baseURL}/health`, {
+                method: 'GET',
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            
+            if (response.ok) {
+                const data = await response.json();
+                return { available: true, data };
+            }
+            return { available: false, error: `Health check returned ${response.status}` };
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                return { available: false, error: 'API не отвечает (таймаут 5с)' };
+            }
+            return { available: false, error: error.message };
+        }
     }
 
     // Make HTTP request with retry logic
@@ -61,13 +87,6 @@ class APIService {
                 console.log(`[${responseTime}] [API] Response received:`, { status: response.status, ok: response.ok });
 
             // Handle different status codes
-            if (response.status === 401) {
-                // Unauthorized - redirect to login
-                this.clearAuthToken();
-                window.dispatchEvent(new CustomEvent('auth:logout'));
-                throw new Error('Unauthorized');
-            }
-
             if (response.status === 429) {
                 // Rate limited - retry with exponential backoff
                 if (attempt <= this.retryAttempts) {
@@ -104,14 +123,39 @@ class APIService {
                     // 2. {success: false, error: {message: "..."}}  <- Old wrapped format
                     // 3. {message: "..."}  <- Direct message
                     let errorMessage;
-                    if (typeof errorData.error === 'string') {
+                    if (errorData.details && Array.isArray(errorData.details)) {
+                        // Map english validation details to Russian
+                        const translatedDetails = errorData.details.map(detail => {
+                            if (detail.includes('Deadline must be in the future')) return 'Срок выполнения должен быть в будущем (начиная с завтрашнего дня)';
+                            if (detail.includes('title') || detail.includes('Title')) return 'Слишком короткое или длинное название/должность (макс 100 символов)';
+                            if (detail.includes('description')) return 'Слишком короткое описание';
+                            if (detail.includes('budget')) return 'Некорректный бюджет';
+                            if (detail.includes('Name must be')) return 'Имя не должно превышать 100 символов';
+                            if (detail.includes('Bio must be')) return 'Поле "О себе" не должно превышать 1000 символов';
+                            if (detail.includes('Invalid avatar URL')) return 'Неверный формат ссылки на изображение (должен быть URL)';
+                            if (detail.includes('Avatar URL is too long')) return 'Ссылка на аватар слишком длинная (макс 500 символов)';
+                            return detail; // fallback
+                        });
+                        errorMessage = translatedDetails.join('\n');
+                    } else if (errorData.error?.details && Array.isArray(errorData.error.details)) {
+                        // Handle wrapped error format with details array
+                        const translatedDetails = errorData.error.details.map(detail => {
+                            if (detail.includes('Name must be')) return 'Имя не должно превышать 100 символов';
+                            if (detail.includes('Title must be')) return 'Должность не должна превышать 100 символов';
+                            if (detail.includes('Bio must be')) return 'Поле "О себе" не должно превышать 1000 символов';
+                            if (detail.includes('Invalid avatar URL')) return 'Неверный формат ссылки на аватар (должен начинаться с http/https)';
+                            if (detail.includes('Avatar URL is too long')) return 'Ссылка на аватар слишком длинная (макс 500 символов)';
+                            return detail;
+                        });
+                        errorMessage = translatedDetails.join('\n');
+                    } else if (typeof errorData.error === 'string') {
                         errorMessage = errorData.error;
                     } else if (errorData.error?.message) {
                         errorMessage = errorData.error.message;
                     } else if (errorData.message) {
                         errorMessage = errorData.message;
                     } else {
-                        errorMessage = 'Request failed';
+                        errorMessage = 'Не удалось выполнить запрос';
                     }
                     
                     console.log('[API] Throwing error:', errorMessage);
@@ -134,12 +178,28 @@ class APIService {
                 if (fetchError.name === 'AbortError') {
                     const timeoutTime = new Date().toISOString();
                     console.error(`[${timeoutTime}] [API] Request timeout (15s) for:`, endpoint);
-                    throw new Error('Запрос превысил время ожидания. Пожалуйста, попробуйте позже.');
+                    console.error(`[${timeoutTime}] [API] Base URL:`, this.baseURL);
+                    
+                    // Check if API is available
+                    const healthCheck = await this.checkHealth();
+                    if (!healthCheck.available) {
+                        throw new Error(`API недоступен: ${healthCheck.error}. Проверьте, что backend развернут и доступен по адресу ${this.baseURL}`);
+                    }
+                    
+                    throw new Error('Запрос превысил время ожидания. Возможно, проблема с подключением к базе данных. Пожалуйста, попробуйте позже.');
                 }
                 throw fetchError;
             }
         } catch (error) {
             console.error('API Request Error:', error);
+            console.error('[API] Base URL:', this.baseURL);
+            console.error('[API] Endpoint:', endpoint);
+            console.error('[API] Full URL:', `${this.baseURL}${endpoint}`);
+            console.error('[API] Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
             throw error;
         }
     }
@@ -189,6 +249,75 @@ class APIService {
             email,
             password
         });
+    }
+
+    async resendVerificationEmail(email) {
+        // This is a public endpoint, don't add auth token
+        const timestamp = new Date().toISOString();
+        const url = `${this.baseURL}/auth/resend-verification`;
+        console.log(`[${timestamp}] [API] Resend verification email request (public endpoint)`);
+        console.log(`[${timestamp}] [API] URL:`, url);
+        console.log(`[${timestamp}] [API] Email:`, email);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        
+        try {
+            // Explicitly ensure no Authorization header is sent
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+            
+            // Make sure we're not adding any auth token
+            console.log(`[${timestamp}] [API] Request headers:`, headers);
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({ email }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            
+            console.log(`[${timestamp}] [API] Response status:`, response.status);
+            console.log(`[${timestamp}] [API] Response ok:`, response.ok);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.log(`[${timestamp}] [API] Error response status:`, response.status);
+                console.log(`[${timestamp}] [API] Error response text:`, errorText);
+                let errorData;
+                try {
+                    errorData = JSON.parse(errorText);
+                    console.log(`[${timestamp}] [API] Parsed error data:`, errorData);
+                } catch {
+                    console.log(`[${timestamp}] [API] Could not parse error as JSON`);
+                    throw new Error(errorText || `HTTP ${response.status}`);
+                }
+                
+                // Приоритет: message > error > общее сообщение
+                const errorMessage = errorData.message || errorData.error || 'Ошибка при отправке письма';
+                console.log(`[${timestamp}] [API] Throwing error:`, errorMessage);
+                throw new Error(errorMessage);
+            }
+            
+            const data = await response.json();
+            console.log(`[${timestamp}] [API] Success response:`, data);
+            
+            // Если есть предупреждение, показываем его пользователю
+            if (data.warning) {
+                console.warn(`[${timestamp}] [API] Warning:`, data.warning);
+            }
+            
+            return data;
+        } catch (error) {
+            clearTimeout(timeoutId);
+            console.error(`[${timestamp}] [API] Resend verification error:`, error);
+            if (error.name === 'AbortError') {
+                throw new Error('Запрос превысил время ожидания. Попробуйте позже.');
+            }
+            throw error;
+        }
     }
 
     // ===== Task Endpoints =====
@@ -248,6 +377,22 @@ class APIService {
 
     // ===== User/Profile Endpoints =====
 
+    async getUsers() {
+        return this.get('/users');
+    }
+
+    async updateUserRole(targetUserId, newRole) {
+        return this.put('/admin/users/role', {
+            data: { targetUserId, newRole }
+        });
+    }
+
+    async updateUserStatus(targetUserId, newStatus) {
+        return this.put('/admin/users/ban', {
+            data: { targetUserId, newStatus }
+        });
+    }
+
     async getProfile(userId = 'me') {
         return this.get(`/users/${userId}`);
     }
@@ -283,10 +428,30 @@ class APIService {
         return this.get(`/users/${userId}/reviews`);
     }
 
+    // ===== Review Endpoints =====
+
+    async getProfileReviews(userId) {
+        return this.get(`/users/${userId}/reviews`);
+    }
+
+    async submitProfileReview(userId, rating, comment) {
+        return this.post(`/users/${userId}/reviews`, {
+            data: { rating, comment }
+        });
+    }
+
+    // ===== Message Endpoints =====
+
+    async sendMessage(receiverId, content) {
+        return this.post('/messages', {
+            data: { receiverId, content }
+        });
+    }
+
     // ===== Application Endpoints =====
 
     async getApplications(taskId) {
-        return this.get(`/tasks/${taskId}/applications`);
+        return this.get(`/applications/task/${taskId}`);
     }
 
     async getMyApplications() {
@@ -304,6 +469,12 @@ try {
     // Create a dummy API to prevent crashes
     window.api = {
         getTasks: () => Promise.reject(new Error('API not initialized')),
-        getMyApplications: () => Promise.reject(new Error('API not initialized'))
+        getMyApplications: () => Promise.reject(new Error('API not initialized')),
+        login: () => Promise.reject(new Error('API not initialized')),
+        register: () => Promise.reject(new Error('API not initialized')),
+        createTask: () => Promise.reject(new Error('API not initialized')),
+        getProfile: () => Promise.reject(new Error('API not initialized')),
+        updateProfile: () => Promise.reject(new Error('API not initialized')),
+        getTask: () => Promise.reject(new Error('API not initialized'))
     };
 }

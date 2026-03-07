@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Open-Lance - P2P Freelance Marketplace">
+    <meta name="description" content="Open-Lance - Маркетплейс для фрилансеров и заказчиков">
     <title>Open-Lance - Freelance Marketplace</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="stylesheet" href="css/style.css">
@@ -13,14 +13,15 @@
     <nav class="navbar">
         <div class="container">
             <div class="nav-brand">
-                <h1>Open-Lance</h1>
+                <h1><a href="#" data-page="home" style="text-decoration: none; color: inherit; cursor: pointer;">Open-Lance</a></h1>
             </div>
             <div class="nav-menu" id="navMenu">
                 <a href="#" data-page="home">Главная</a>
                 <a href="#" data-page="tasks">Задачи</a>
                 <a href="#" data-page="my-tasks">Мои задачи</a>
+                <a href="#" data-page="users">Фрилансеры</a>
+                <a href="#" data-page="messages">Сообщения</a>
                 <a href="#" data-page="profile">Профиль</a>
-                <button id="createTaskBtn" class="btn btn-success" style="display: none; margin-right: 10px;">+ Создать задачу</button>
                 <button id="authBtn" class="btn btn-primary">Войти</button>
             </div>
         </div>
@@ -46,6 +47,17 @@
                     <input type="password" id="password" required>
                 </div>
                 <button type="submit" class="btn btn-primary">Войти</button>
+                <div id="resendVerificationContainer" style="display: none; margin-top: 15px; padding: 15px; background: #fff3cd; border-radius: 5px; border: 1px solid #ffc107;">
+                    <p style="margin: 0 0 10px 0; color: #856404;">
+                        <strong>Email не подтвержден</strong>
+                    </p>
+                    <p style="margin: 0 0 10px 0; color: #856404; font-size: 14px;">
+                        На ваш email было отправлено письмо для подтверждения. Если вы не получили письмо, нажмите кнопку ниже.
+                    </p>
+                    <button type="button" id="resendVerificationBtn" class="btn" style="background: #ffc107; color: #000; border: none; padding: 8px 16px; font-size: 14px;">
+                        Отправить письмо повторно
+                    </button>
+                </div>
                 <p class="form-footer">
                     Нет аккаунта? <a href="#" id="showRegister">Зарегистрироваться</a>
                 </p>
@@ -119,6 +131,9 @@
     <script src="js/auth.js"></script>
     <script src="js/router.js"></script>
     <script src="js/components/tasks.js"></script>
+    <script src="js/components/taskDetails.js"></script>
+    <script src="js/components/users.js"></script>
+    <script src="js/components/messages.js"></script>
     <script src="js/components/profile.js"></script>
     <script src="js/components/home.js"></script>
     <script src="js/createTask.js"></script>

@@ -10,6 +10,7 @@ class MongoManager {
         this.client = null;
         this.db = null;
         this.isConnected = false;
+        this.connectPromise = null; // Lock for concurrent connections
         this.env = null; // Store env for future connect() calls
         
         // MongoDB Atlas connection string (will be set in connect())
@@ -20,12 +21,13 @@ class MongoManager {
         this.collections = {
             users: 'users',
             tasks: 'tasks',
-            applications: 'applications'
+            applications: 'applications',
+            reviews: 'reviews'
         };
 
         // Retry settings
-        this.maxRetries = 3;
-        this.retryDelay = 1000; // ms
+        this.maxRetries = 2; // Reduced to 2 to prevent 10s Cloudflare worker timeouts
+        this.retryDelay = 500; // ms
     }
 
     /**
@@ -63,38 +65,63 @@ class MongoManager {
         }
 
         if (this.isConnected && this.client) {
-            return this.db;
+            // Check if connection has been idle for more than 5 seconds in real-time.
+            // Cloudflare freezes time when idle, so if Date.now() jumped, we know we woke up.
+            const timeSinceLastUse = Date.now() - (this.lastUsed || 0);
+            if (timeSinceLastUse > 5000) {
+                console.log(`Connection idle for ${timeSinceLastUse}ms, destroying frozen socket...`);
+                this.isConnected = false;
+                await this.client.close(true).catch(() => {});
+                this.client = null;
+            } else {
+                this.lastUsed = Date.now();
+                return this.db;
+            }
         }
 
-        try {
-            console.log('Connecting to MongoDB Atlas...');
-            
-            this.client = new MongoClient(this.connectionString, {
-                maxPoolSize: 5,
-                minPoolSize: 1,
-                retryWrites: true,
-                retryReads: true,
-                connectTimeoutMS: 10000,      // 10 seconds to connect
-                serverSelectionTimeoutMS: 10000, // 10 seconds to select server
-                socketTimeoutMS: 10000,       // 10 seconds socket timeout
-                maxIdleTimeMS: 30000,         // Close idle connections after 30s
-            });
-
-            await this.client.connect();
-            this.db = this.client.db(this.dbName);
-            this.isConnected = true;
-
-            console.log(`Connected to MongoDB database: ${this.dbName}`);
-
-            // Create indexes on first connection
-            await this.createIndexes();
-
-            return this.db;
-        } catch (error) {
-            console.error('Failed to connect to MongoDB:', error);
-            this.isConnected = false;
-            throw error;
+        if (this.connectPromise) {
+            console.log('Already connecting to MongoDB, waiting for promise...');
+            return await this.connectPromise;
         }
+
+        this.connectPromise = (async () => {
+            try {
+                console.log('Connecting to MongoDB Atlas...');
+                
+                this.client = new MongoClient(this.connectionString, {
+                    maxPoolSize: 10,
+                    minPoolSize: 0,
+                    maxIdleTimeMS: 10000, // Close connections idle for >10s to avoid frozen Cloudflare sockets
+                    retryWrites: true,
+                    retryReads: true,
+                    serverSelectionTimeoutMS: 1500, // Fail extremely fast for serverless (1.5s)
+                    connectTimeoutMS: 1500,
+                    socketTimeoutMS: 1500,
+                    waitQueueTimeoutMS: 1500,
+                    family: 4, // Force IPv4 to prevent 5s DNS fallback timeout
+                });
+
+                await this.client.connect();
+                this.db = this.client.db(this.dbName);
+                this.isConnected = true;
+
+                console.log(`Connected to MongoDB database: ${this.dbName}`);
+
+                // Create indexes on first connection
+                await this.createIndexes();
+                
+                this.lastUsed = Date.now();
+                return this.db;
+            } catch (error) {
+                console.error('Failed to connect to MongoDB:', error);
+                this.isConnected = false;
+                throw error;
+            } finally {
+                this.connectPromise = null;
+            }
+        })();
+
+        return await this.connectPromise;
     }
 
     /**
@@ -110,6 +137,7 @@ class MongoManager {
             await usersCollection.createIndex({ email: 1 }, { unique: true });
             await usersCollection.createIndex({ user_id: 1 }, { unique: true });
             await usersCollection.createIndex({ created_at: -1 });
+            await usersCollection.createIndex({ verification_token: 1 });
 
             // Tasks indexes
             await tasksCollection.createIndex({ task_id: 1 }, { unique: true });
@@ -131,6 +159,13 @@ class MongoManager {
             await applicationsCollection.createIndex({ task_id: 1 });
             await applicationsCollection.createIndex({ worker_id: 1 });
             await applicationsCollection.createIndex({ status: 1 });
+
+            // Reviews indexes
+            const reviewsCollection = this.db.collection(this.collections.reviews);
+            await reviewsCollection.createIndex({ review_id: 1 }, { unique: true });
+            await reviewsCollection.createIndex({ target_user_id: 1 });
+            await reviewsCollection.createIndex({ reviewer_id: 1 });
+            await reviewsCollection.createIndex({ created_at: -1 });
 
             console.log('MongoDB indexes created successfully');
         } catch (error) {
@@ -155,42 +190,33 @@ class MongoManager {
      * Find one document
      */
     async findOne(collectionName, query, options = {}) {
-        try {
+        return this.executeWithRetry(async () => {
             await this.connect();
+            this.lastUsed = Date.now();
             const collection = this.getCollection(collectionName);
             return await collection.findOne(query, options);
-        } catch (error) {
-            // If connection error, try to reconnect once
-            if (error.message && error.message.includes('timed out')) {
-                console.log('MongoDB connection timeout, reconnecting...');
-                this.isConnected = false;
-                if (this.client) {
-                    await this.client.close().catch(() => {});
-                    this.client = null;
-                }
-                await this.connect();
-                const collection = this.getCollection(collectionName);
-                return await collection.findOne(query, options);
-            }
-            throw error;
-        }
+        });
     }
 
     /**
      * Find multiple documents
      */
     async find(collectionName, query, options = {}) {
-        await this.connect();
-        const collection = this.getCollection(collectionName);
-        return await collection.find(query, options).toArray();
+        return this.executeWithRetry(async () => {
+            await this.connect();
+            this.lastUsed = Date.now();
+            const collection = this.getCollection(collectionName);
+            return await collection.find(query, options).toArray();
+        });
     }
 
     /**
      * Insert one document
      */
     async insertOne(collectionName, document) {
-        try {
+        return this.executeWithRetry(async () => {
             await this.connect();
+            this.lastUsed = Date.now();
             const collection = this.getCollection(collectionName);
             const result = await collection.insertOne(document);
             return { 
@@ -198,56 +224,40 @@ class MongoManager {
                 insertedId: result.insertedId,
                 document: { _id: result.insertedId, ...document }
             };
-        } catch (error) {
-            // If connection error, try to reconnect once
-            if (error.message && error.message.includes('timed out')) {
-                console.log('MongoDB connection timeout, reconnecting...');
-                this.isConnected = false;
-                if (this.client) {
-                    await this.client.close().catch(() => {});
-                    this.client = null;
-                }
-                await this.connect();
-                const collection = this.getCollection(collectionName);
-                const result = await collection.insertOne(document);
-                return { 
-                    success: true, 
-                    insertedId: result.insertedId,
-                    document: { _id: result.insertedId, ...document }
-                };
-            }
-            throw error;
-        }
+        });
     }
 
     /**
      * Update one document
      */
     async updateOne(collectionName, query, update, options = {}) {
-        await this.connect();
-        const collection = this.getCollection(collectionName);
-        
-        // If update doesn't have operators, wrap in $set
-        const updateDoc = update.$set || update.$inc || update.$push || update.$pull
-            ? update
-            : { $set: update };
-        
-        const result = await collection.updateOne(query, updateDoc, options);
-        
-        // Return updated document if requested
-        if (options.returnDocument === 'after' || options.returnUpdatedDocument) {
-            const updatedDoc = await collection.findOne(query);
+        return this.executeWithRetry(async () => {
+            await this.connect();
+            this.lastUsed = Date.now();
+            const collection = this.getCollection(collectionName);
+            
+            // If update doesn't have operators, wrap in $set
+            const updateDoc = update.$set || update.$inc || update.$push || update.$pull
+                ? update
+                : { $set: update };
+            
+            const result = await collection.updateOne(query, updateDoc, options);
+            
+            // Return updated document if requested
+            if (options.returnDocument === 'after' || options.returnUpdatedDocument) {
+                const updatedDoc = await collection.findOne(query);
+                return { 
+                    success: true, 
+                    modifiedCount: result.modifiedCount,
+                    document: updatedDoc
+                };
+            }
+            
             return { 
                 success: true, 
-                modifiedCount: result.modifiedCount,
-                document: updatedDoc
+                modifiedCount: result.modifiedCount 
             };
-        }
-        
-        return { 
-            success: true, 
-            modifiedCount: result.modifiedCount 
-        };
+        });
     }
 
     /**
@@ -293,6 +303,7 @@ class MongoManager {
             // Retry on network or timeout errors
             if ((error.name === 'MongoNetworkError' || 
                  error.name === 'MongoTimeoutError' ||
+                 error.name === 'MongoServerSelectionError' ||
                  error.code === 'ETIMEDOUT' ||
                  error.code === 'ECONNRESET') && 
                 attempt < this.maxRetries) {
@@ -303,6 +314,10 @@ class MongoManager {
                 
                 // Reconnect if connection lost
                 this.isConnected = false;
+                if (this.client) {
+                    await this.client.close(true).catch(() => {});
+                    this.client = null;
+                }
                 await this.connect();
                 
                 return this.executeWithRetry(operation, attempt + 1);
@@ -368,18 +383,5 @@ class MongoManager {
 
 // Create singleton instance
 const mongoManager = new MongoManager();
-
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-    console.log('SIGTERM received, closing MongoDB connection...');
-    await mongoManager.close();
-    process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-    console.log('SIGINT received, closing MongoDB connection...');
-    await mongoManager.close();
-    process.exit(0);
-});
 
 module.exports = mongoManager;

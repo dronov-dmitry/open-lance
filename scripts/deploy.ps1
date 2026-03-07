@@ -61,13 +61,14 @@ if ($Help) {
     Write-Host "    .\deploy.ps1 [options]"
     Write-Host ""
     Write-Host "Options:"
-    Write-Host "    -Environment <env>      Deployment environment (dev/prod) [default: dev]"
+    Write-Host "    -Environment <env>      Deployment environment (dev/prod/local) [default: dev]"
     Write-Host "    -SkipBackend           Skip backend deployment"
     Write-Host "    -Help                  Show this help message"
     Write-Host ""
     Write-Host "Examples:"
     Write-Host "    .\deploy.ps1                           # Full deployment to dev"
     Write-Host "    .\deploy.ps1 -Environment prod         # Full deployment to prod"
+    Write-Host "    .\deploy.ps1 -Environment local        # Configure for local testing"
     Write-Host "    .\deploy.ps1 -SkipBackend              # Configure only"
     Write-Host ""
     Write-Host "Changes in v3.0:"
@@ -180,15 +181,79 @@ function Test-CloudflareAuth {
 function Get-DeploymentConfig {
     Write-Header "Configuration"
     
-    $configFile = Join-Path $ProjectRoot ".deploy-config.ps1"
+    $configFile = Join-Path $ProjectRoot ".env"
     
+    # Target Environment Selection
+    Write-Host ""
+    Write-Host "Select Target Environment:" -ForegroundColor Cyan
+    Write-Host "1) Local Testing (generates .dev.vars for use with start_dev scripts)" -ForegroundColor White
+    Write-Host "2) Cloudflare Workers (deploys to cloud)" -ForegroundColor White
+    
+    do {
+        $envChoice = Read-Host "Choose an option (1 or 2)"
+    } until ($envChoice -match "^[12]$")
+    
+    if ($envChoice -eq "1") {
+        $script:Environment = "local"
+    } else {
+        $script:Environment = "dev" # Default for cloud
+        # If cloud deployment is selected, we MUST check auth
+        Test-CloudflareAuth
+    }
+
     if (Test-Path $configFile) {
-        Write-Info "Found existing configuration"
-        . $configFile
+        Write-Info "Found existing configuration in .env"
+        # Grab raw content for replacement later
+        $envContent = Get-Content $configFile -Raw
         
-        $useExisting = Read-Host "Use existing configuration? (y/n)"
-        if ($useExisting -ne "y") {
-            Set-DeploymentConfig
+        # Parse .env file
+        $envData = Get-Content $configFile | Where-Object { $_ -match '=' -and $_ -notmatch '^#' } | ForEach-Object {
+            $parts = $_ -split '=', 2
+            @{ ($parts[0].Trim()) = ($parts[1].Trim()) }
+        }
+        
+        $envVars = @{}
+        foreach ($item in $envData) {
+            foreach ($key in $item.Keys) {
+                # Remove quotes if present
+                $val = $item[$key]
+                if ($val -match "^`"(.*)`"$") { $val = $Matches[1] }
+                elseif ($val -match "^'(.*)'$") { $val = $Matches[1] }
+                $envVars[$key] = $val
+            }
+        }
+        
+        # Restore user's choice (don't let the saved config override what they just selected)
+        if ($envChoice -eq "1") {
+            $script:Environment = "local"
+        } else {
+            $script:Environment = "dev"
+        }
+        
+        $script:MONGODB_URI = $envVars['MONGODB_URI']
+        $script:MONGODB_DATABASE = $envVars['MONGODB_DATABASE']
+        $script:FRONTEND_URL = $envVars['FRONTEND_URL']
+        $script:JWT_SECRET = $envVars['JWT_SECRET']
+        $script:API_URL = $envVars['API_URL']
+        $script:RESEND_API_KEY = $envVars['RESEND_API_KEY']
+        $script:SENDER_EMAIL = $envVars['SENDER_EMAIL']
+        
+        if ($envChoice -eq "1") {
+            # For local testing, silently use existing config (to generate .dev.vars)
+            Write-Info "Using existing configuration for local testing secrets."
+            
+            # Keep existing config but update the Environment variable in .env
+            $updatedEnvContent = $envContent -replace 'Environment=["\u0027]?dev["\u0027]?', 'Environment="local"'
+            $updatedEnvContent | Out-File -FilePath $configFile -Encoding UTF8
+        } else {
+            $useExisting = Read-Host "Use existing configuration? (y/n)"
+            if ($useExisting -ne "y") {
+                Set-DeploymentConfig
+            } else {
+                # Keep existing config but update the Environment variable in .env
+                $updatedEnvContent = $envContent -replace 'Environment=["\u0027]?local["\u0027]?', 'Environment="dev"'
+                $updatedEnvContent | Out-File -FilePath $configFile -Encoding UTF8
+            }
         }
     }
     else {
@@ -236,6 +301,87 @@ function Set-DeploymentConfig {
         $script:FRONTEND_URL = "*"
     }
     
+    # Resend Email Configuration
+    Write-Host ""
+    Write-Host "Email Verification Setup (Resend)" -ForegroundColor Yellow
+    Write-Host "Cloudflare Workers requires an external API to send emails." -ForegroundColor Gray
+    Write-Host "If you don't have a Resend key, emails will only be simulated (printed to console)." -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "Resend Setup Options:" -ForegroundColor Cyan
+    Write-Host "  1. For TESTING (✅ fully free, no domain):" -ForegroundColor Green
+    Write-Host "     - Use: onboarding@resend.dev" -ForegroundColor Gray
+    Write-Host "     - No domain verification required" -ForegroundColor Gray
+    Write-Host "     - Works immediately after getting API key" -ForegroundColor Gray
+    Write-Host "     - ✅ Can send to your email and test addresses @resend.dev" -ForegroundColor Green
+    Write-Host "     - Test addresses: delivered@resend.dev, bounced@resend.dev, etc." -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  2. For PRODUCTION (with custom domain):" -ForegroundColor Gray
+    Write-Host "     - Need to verify your domain in Resend Dashboard" -ForegroundColor Gray
+    Write-Host "     - Steps:" -ForegroundColor Yellow
+    Write-Host "       1. Go to https://resend.com/domains" -ForegroundColor Gray
+    Write-Host "       2. Click 'Add Domain'" -ForegroundColor Gray
+    Write-Host "       3. Enter your domain (e.g., example.com)" -ForegroundColor Gray
+    Write-Host "       4. Add DNS records (DKIM, SPF) to your domain" -ForegroundColor Gray
+    Write-Host "       5. Wait for verification (usually 5-10 minutes)" -ForegroundColor Gray
+    Write-Host "       6. Use: noreply@yourdomain.com" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  3. For GitHub Pages (✅ fully free):" -ForegroundColor Green
+    Write-Host "     - ⚠️  GitHub Pages subdomains (username.github.io) CANNOT be verified!" -ForegroundColor Yellow
+    Write-Host "     - Option A: onboarding@resend.dev (only your email + test @resend.dev)" -ForegroundColor Gray
+    Write-Host "     - Option B: WITHOUT Resend - links in Cloudflare Workers logs" -ForegroundColor Gray
+    Write-Host "     - For production: buy a cheap domain (from $0.99/year)" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  4. Fully free WITHOUT email service:" -ForegroundColor Green
+    Write-Host "     - Leave Resend API Key empty" -ForegroundColor Gray
+    Write-Host "     - Verification links will be in Cloudflare Workers logs" -ForegroundColor Gray
+    Write-Host "     - Copy links from logs and send to users manually" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "Get API Key: https://resend.com/api-keys" -ForegroundColor Cyan
+    Write-Host ""
+    
+    $script:RESEND_API_KEY = Read-Host "Resend API Key (re_...) [Leave empty to simulate]"
+    if (-not [string]::IsNullOrWhiteSpace($script:RESEND_API_KEY)) {
+        Write-Host ""
+        Write-Host "Sender Email Options:" -ForegroundColor Cyan
+        Write-Host "  - onboarding@resend.dev (⚠️  RESTRICTION: can send ONLY to Resend account owner's email!)" -ForegroundColor Yellow
+        Write-Host "  - your-email@yourdomain.com (for production, requires domain verification)" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "⚠️  IMPORTANT: onboarding@resend.dev works for testing only!" -ForegroundColor Yellow
+        Write-Host "   To send to any email address, you must verify your domain." -ForegroundColor Yellow
+        Write-Host ""
+        $script:SENDER_EMAIL = Read-Host "Sender Email [onboarding@resend.dev]"
+        if ([string]::IsNullOrWhiteSpace($script:SENDER_EMAIL)) {
+            $script:SENDER_EMAIL = "onboarding@resend.dev"
+            Write-Host "Using default: onboarding@resend.dev (⚠️  Resend account owner's email only!)" -ForegroundColor Yellow
+        } else {
+            # Check if using custom domain
+            if ($script:SENDER_EMAIL -notmatch "@resend\.dev$") {
+                Write-Host ""
+                Write-Host "⚠️  Custom domain detected: $script:SENDER_EMAIL" -ForegroundColor Yellow
+                Write-Host "Make sure you have:" -ForegroundColor Yellow
+                Write-Host "  1. Added and verified your domain in Resend Dashboard" -ForegroundColor Gray
+                Write-Host "     https://resend.com/domains" -ForegroundColor Gray
+                Write-Host "  2. Added DNS records (DKIM, SPF) to your domain" -ForegroundColor Gray
+                Write-Host "  3. Domain status is 'Verified' in Resend Dashboard" -ForegroundColor Gray
+                Write-Host ""
+                $confirmDomain = Read-Host "Is your domain verified in Resend? (y/n)"
+                if ($confirmDomain -ne "y") {
+                    Write-Host "⚠️  Warning: Using unverified domain may cause 403 errors!" -ForegroundColor Red
+                    Write-Host "   Consider using onboarding@resend.dev for testing first." -ForegroundColor Yellow
+                    Write-Host ""
+                    $useDefault = Read-Host "Use onboarding@resend.dev instead? (y/n)"
+                    if ($useDefault -eq "y") {
+                        $script:SENDER_EMAIL = "onboarding@resend.dev"
+                        Write-Host "Changed to: onboarding@resend.dev" -ForegroundColor Green
+                    }
+                }
+            }
+        }
+    } else {
+        $script:RESEND_API_KEY = ""
+        $script:SENDER_EMAIL = ""
+    }
+    
     # Generate JWT Secret
     Write-Info "Generating JWT secret..."
     $script:JWT_SECRET = & node -e 'console.log(require(\"crypto\").randomBytes(32).toString(\"hex\"))'
@@ -243,22 +389,24 @@ function Set-DeploymentConfig {
     # Save configuration
     $configContent = @"
 # Open-Lance Deployment Configuration v3.0 (Cloudflare Workers)
-`$Environment = '$Environment'
-`$MONGODB_URI = '$MONGODB_URI'
-`$MONGODB_DATABASE = '$MONGODB_DATABASE'
-`$FRONTEND_URL = '$FRONTEND_URL'
-`$JWT_SECRET = '$JWT_SECRET'
+Environment="$Environment"
+MONGODB_URI="$MONGODB_URI"
+MONGODB_DATABASE="$MONGODB_DATABASE"
+FRONTEND_URL="$FRONTEND_URL"
+JWT_SECRET="$JWT_SECRET"
+RESEND_API_KEY="$RESEND_API_KEY"
+SENDER_EMAIL="$SENDER_EMAIL"
 "@
     
     $configContent | Out-File -FilePath $configFile -Encoding UTF8
-    Write-Success "Configuration saved"
+    Write-Success "Configuration saved to .env"
     
-    # Add to .gitignore
+    # Check if .gitignore exists, .env is usually already in there
     $gitignorePath = Join-Path $ProjectRoot ".gitignore"
     if (Test-Path $gitignorePath) {
         $gitignoreContent = Get-Content $gitignorePath -Raw
-        if ($gitignoreContent -notmatch ".deploy-config.ps1") {
-            Add-Content -Path $gitignorePath -Value "`n.deploy-config.ps1"
+        if ($gitignoreContent -notmatch "^\.env$") {
+            Add-Content -Path $gitignorePath -Value "`n.env"
         }
     }
 }
@@ -277,14 +425,44 @@ function Deploy-Backend {
     Write-Info "Installing backend dependencies..."
     npm install
     
+    if ($Environment -eq "local") {
+        Write-Info "Setting local secrets in .dev.vars for local testing..."
+        
+        $devVarsContent = @"
+MONGODB_URI="$MONGODB_URI"
+JWT_SECRET="$JWT_SECRET"
+"@
+        $devVarsContent | Out-File -FilePath ".dev.vars" -Encoding UTF8
+        Write-Host "[OK] Local secrets configured in .dev.vars" -ForegroundColor Green
+        
+        # Determine local URL
+        $script:API_URL = "http://127.0.0.1:8787"
+        Write-Success "Local backend configured successfully"
+        Write-Info "Local Worker URL: $API_URL"
+        
+        # Save to .env and exit (no need to deploy to Cloudflare)
+        $configFile = Join-Path $ProjectRoot ".env"
+        $envContent = Get-Content -Path $configFile -Raw
+        if ($envContent -match "(?m)^API_URL=.*$") {
+            $envContent = $envContent -replace "(?m)^API_URL=.*$", "API_URL=`"$API_URL`""
+            $envContent | Out-File -FilePath $configFile -Encoding UTF8
+        } else {
+            Add-Content -Path $configFile -Value "`nAPI_URL=`"$API_URL`""
+        }
+        
+        Set-Location $ProjectRoot
+        return $true
+    }
+    
     # Set Cloudflare Workers secrets
     Write-Info "Setting Cloudflare Workers secrets..."
     
-    # MongoDB URI - using temporary file for proper piping
+    # MongoDB URI
     Write-Info "Setting MONGODB_URI secret..."
-    $MONGODB_URI | Out-File -FilePath "$env:TEMP\mongodb_uri.txt" -Encoding ASCII -NoNewline
-    $secretResult1 = Get-Content "$env:TEMP\mongodb_uri.txt" | wrangler secret put MONGODB_URI 2>&1
-    Remove-Item "$env:TEMP\mongodb_uri.txt" -ErrorAction SilentlyContinue
+    $tempMongoParams = Join-Path $env:TEMP "mongodb_uri.txt"
+    [IO.File]::WriteAllText($tempMongoParams, $MONGODB_URI)
+    $secretResult1 = cmd.exe /c "wrangler secret put MONGODB_URI < ""$tempMongoParams""" 2>&1
+    Remove-Item $tempMongoParams -ErrorAction SilentlyContinue
     
     # Check if secret was actually set (ignore warnings)
     if ($secretResult1 -match "error|failed" -and $secretResult1 -notmatch "Created|Updated") {
@@ -296,9 +474,10 @@ function Deploy-Backend {
     
     # JWT Secret
     Write-Info "Setting JWT_SECRET secret..."
-    $JWT_SECRET | Out-File -FilePath "$env:TEMP\jwt_secret.txt" -Encoding ASCII -NoNewline
-    $secretResult2 = Get-Content "$env:TEMP\jwt_secret.txt" | wrangler secret put JWT_SECRET 2>&1
-    Remove-Item "$env:TEMP\jwt_secret.txt" -ErrorAction SilentlyContinue
+    $tempJwtParams = Join-Path $env:TEMP "jwt_secret.txt"
+    [IO.File]::WriteAllText($tempJwtParams, $JWT_SECRET)
+    $secretResult2 = cmd.exe /c "wrangler secret put JWT_SECRET < ""$tempJwtParams""" 2>&1
+    Remove-Item $tempJwtParams -ErrorAction SilentlyContinue
     
     # Check if secret was actually set (ignore warnings)
     if ($secretResult2 -match "error|failed" -and $secretResult2 -notmatch "Created|Updated") {
@@ -307,6 +486,38 @@ function Deploy-Backend {
         exit 1
     }
     Write-Host "[OK] JWT_SECRET secret set" -ForegroundColor Green
+    
+    # Resend API Key
+    if (-not [string]::IsNullOrWhiteSpace($RESEND_API_KEY)) {
+        Write-Info "Setting RESEND_API_KEY secret..."
+        $tempResendParams = Join-Path $env:TEMP "resend_key.txt"
+        [IO.File]::WriteAllText($tempResendParams, $RESEND_API_KEY)
+        $secretResult3 = cmd.exe /c "wrangler secret put RESEND_API_KEY < ""$tempResendParams""" 2>&1
+        Remove-Item $tempResendParams -ErrorAction SilentlyContinue
+        Write-Host "[OK] RESEND_API_KEY secret set" -ForegroundColor Green
+    } else {
+        # Delete or empty secret if not used
+        $emptyParams = Join-Path $env:TEMP "empty.txt"
+        [IO.File]::WriteAllText($emptyParams, "SIMULATE")
+        cmd.exe /c "wrangler secret put RESEND_API_KEY < ""$emptyParams""" 2>&1 | Out-Null
+        Remove-Item $emptyParams -ErrorAction SilentlyContinue
+    }
+    
+    # Sender Email
+    if (-not [string]::IsNullOrWhiteSpace($SENDER_EMAIL)) {
+        Write-Info "Setting SENDER_EMAIL secret..."
+        $tempEmailParams = Join-Path $env:TEMP "sender_email.txt"
+        [IO.File]::WriteAllText($tempEmailParams, $SENDER_EMAIL)
+        $secretResult4 = cmd.exe /c "wrangler secret put SENDER_EMAIL < ""$tempEmailParams""" 2>&1
+        Remove-Item $tempEmailParams -ErrorAction SilentlyContinue
+        Write-Host "[OK] SENDER_EMAIL secret set" -ForegroundColor Green
+    } else {
+        # Delete or empty secret if not used
+        $emptyParams = Join-Path $env:TEMP "empty.txt"
+        [IO.File]::WriteAllText($emptyParams, "SIMULATE")
+        cmd.exe /c "wrangler secret put SENDER_EMAIL < ""$emptyParams""" 2>&1 | Out-Null
+        Remove-Item $emptyParams -ErrorAction SilentlyContinue
+    }
     
     # Deploy with Wrangler (ignore warnings, only check for real errors)
     Write-Info "Deploying Cloudflare Worker..."
@@ -348,7 +559,7 @@ function Deploy-Backend {
     }
     
     # Extract Worker URL from deploy output
-    if ($deployOutput -match "https://[a-zA-Z0-9-]+\.workers\.dev") {
+    if ($deployOutput -match "https://[a-zA-Z0-9.-]+\.workers\.dev") {
         $script:API_URL = $Matches[0]
         Write-Success "Backend deployed successfully"
         Write-Info "Worker URL: $API_URL"
@@ -361,8 +572,14 @@ function Deploy-Backend {
     }
     
     # Save to config
-    $configFile = Join-Path $ProjectRoot ".deploy-config.ps1"
-    Add-Content -Path $configFile -Value "`n`$API_URL = '$API_URL'"
+    $configFile = Join-Path $ProjectRoot ".env"
+    $envContent = Get-Content -Path $configFile -Raw
+    if ($envContent -match "(?m)^API_URL=.*$") {
+        $envContent = $envContent -replace "(?m)^API_URL=.*$", "API_URL=`"$API_URL`""
+        $envContent | Out-File -FilePath $configFile -Encoding UTF8
+    } else {
+        Add-Content -Path $configFile -Value "`nAPI_URL=`"$API_URL`""
+    }
     
     Set-Location $ProjectRoot
     return $true
@@ -404,9 +621,17 @@ const CONFIG = {
 
 // Get current environment config
 function getConfig() {
-    const env = CONFIG.ENV;
+    const env = CONFIG.ENV || 'development';
+    
+    // Choose fallback based on environment
+    let fallbackURL = '$API_URL';
+    if (env === 'local' || env === 'development') {
+        fallbackURL = 'http://127.0.0.1:8787';
+    }
+    
+    const apiConfig = CONFIG.API[env] || { baseURL: fallbackURL };
     return {
-        apiBaseURL: CONFIG.API[env].baseURL,
+        apiBaseURL: apiConfig.baseURL,
         ...CONFIG.SETTINGS
     };
 }
@@ -430,22 +655,29 @@ function Test-Deployment {
     
     Write-Info "Testing backend health..."
     
+    # Make sure we're testing the correct URL base
+    $TestingUrl = if ($Environment -eq "local") { "http://127.0.0.1:8787" } else { $API_URL }
+    
     try {
         $testData = @{
             email = "test@example.com"
             password = "TestPass123!"
         } | ConvertTo-Json
         
-        $response = Invoke-WebRequest -Uri "$API_URL/auth/register" `
-            -Method POST `
-            -Headers @{"Content-Type"="application/json"} `
-            -Body $testData `
-            -UseBasicParsing `
-            -ErrorAction SilentlyContinue
-        
-        if ($response.StatusCode -eq 201 -or $response.StatusCode -eq 400) {
-            Write-Success "Backend is responding correctly"
-            Write-Info "Test registration: HTTP $($response.StatusCode)"
+        if ($Environment -eq "local") {
+            Write-WarningMsg "Skipping automated API request test for local environment because server might not be running yet."
+        } else {
+            $response = Invoke-WebRequest -Uri "$TestingUrl/auth/register" `
+                -Method POST `
+                -Headers @{"Content-Type"="application/json"} `
+                -Body $testData `
+                -UseBasicParsing `
+                -ErrorAction SilentlyContinue
+            
+            if ($response.StatusCode -eq 201 -or $response.StatusCode -eq 400) {
+                Write-Success "Backend is responding correctly"
+                Write-Info "Test registration: HTTP $($response.StatusCode)"
+            }
         }
     }
     catch {
@@ -462,7 +694,11 @@ function Write-Summary {
     
     Write-Host ""
     Write-Host "Environment:          $Environment"
-    Write-Host "Platform:             Cloudflare Workers (Edge)"
+    if ($Environment -eq "local") {
+        Write-Host "Platform:             Local Development (.dev.vars)"
+    } else {
+        Write-Host "Platform:             Cloudflare Workers (Edge)"
+    }
     Write-Host "Database:             MongoDB Atlas"
     Write-Host "MongoDB Database:     $MONGODB_DATABASE"
     Write-Host ""
@@ -477,8 +713,7 @@ function Write-Summary {
     Write-Host "   Test the API endpoint at: $API_URL/auth/register" -ForegroundColor Gray
     Write-Host ""
     Write-Host "2. Test frontend locally:" -ForegroundColor Cyan
-    Write-Host "   cd docs" -ForegroundColor Gray
-    Write-Host "   python -m http.server 8080" -ForegroundColor Gray
+    Write-Host "   Use scripts\start_dev.bat or start_dev.ps1 to start both servers" -ForegroundColor Gray
     Write-Host "   Open http://localhost:8080" -ForegroundColor Gray
     Write-Host ""
     Write-Host "3. Check MongoDB Atlas:" -ForegroundColor Cyan
@@ -526,7 +761,6 @@ function Main {
     
     # Run deployment steps
     Test-Prerequisites
-    Test-CloudflareAuth
     Get-DeploymentConfig
     
     # Deploy backend
@@ -550,3 +784,4 @@ function Main {
 
 # Run main function
 Main
+

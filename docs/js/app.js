@@ -146,10 +146,14 @@ window.router.register('my-tasks', async function() {
         
         // Загружаем свежие данные (в фоне если есть кэш)
         const fetchData = async () => {
-            const [freshTasks, freshApps] = await Promise.all([
+            const [tasksResponse, appsResponse] = await Promise.all([
                 window.api.getTasks({ owner: 'me' }),
                 window.api.getMyApplications()
             ]);
+            
+            // Extract the actual data arrays from the API responses
+            const freshTasks = tasksResponse.data || [];
+            const freshApps = appsResponse.data?.applications || [];
             
             // Сохраняем в кэш
             const dataToCache = {
@@ -267,13 +271,75 @@ function getTaskStatusText(status) {
     return statusMap[status] || status;
 }
 window.viewTaskDetails = function(taskId) {
-    // TODO: Implement task details page
-    window.utils.showToast('Просмотр деталей задачи: ' + taskId, 'info');
+    window.router.navigate('task-details', { id: taskId });
 };
 // App initialization
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     console.log('Open-Lance application initialized');
     console.log('Environment:', window.APP_CONFIG);
+    
+    // Check API availability
+    if (window.api && typeof window.api.checkHealth === 'function') {
+        try {
+            const healthCheck = await window.api.checkHealth();
+            if (!healthCheck.available) {
+                console.error('[App] API недоступен:', healthCheck.error);
+                console.error('[App] API URL:', window.APP_CONFIG?.apiBaseURL);
+                // Show warning but don't block the app
+                if (window.utils && typeof window.utils.showToast === 'function') {
+                    window.utils.showToast(
+                        `⚠️ API недоступен: ${healthCheck.error}. Проверьте настройки backend.`,
+                        'error',
+                        10000
+                    );
+                }
+            } else {
+                console.log('[App] API health check passed:', healthCheck.data);
+            }
+        } catch (error) {
+            console.error('[App] Health check failed:', error);
+        }
+    }
+    
+    // Check for email verification token
+    const hashParams = new URLSearchParams(window.location.hash.split('?')[1] || '');
+    const verifyToken = hashParams.get('verify') || new URLSearchParams(window.location.search).get('verify');
+    
+    if (verifyToken) {
+        try {
+            await window.api.request(`/auth/verify?token=${verifyToken}`, { method: 'GET' });
+            
+            // Remove token from URL
+            const url = new URL(window.location);
+            url.searchParams.delete('verify');
+            
+            // Check hash as well
+            if (window.location.hash.includes('verify=')) {
+                let newHash = window.location.hash.replace(/([?&])verify=[^&]+(&|$)/, '$1');
+                if (newHash.endsWith('?') || newHash.endsWith('&')) {
+                    newHash = newHash.slice(0, -1);
+                }
+                window.location.hash = newHash;
+            } else {
+                window.history.replaceState({}, document.title, url.pathname + url.search);
+            }
+
+            window.utils.showToast('Email успешно подтвержден! Теперь вы можете войти.', 'success');
+            setTimeout(() => {
+                if (window.auth) window.auth.openLoginModal();
+            }, 1000);
+        } catch (e) {
+            window.utils.showToast(e.message || 'Ошибка подтверждения Email. Возможно, ссылка устарела.', 'error');
+        }
+    }
+
+    // Initialize router on page load
+    // Check if there's a hash, if not, navigate to home
+    if (!window.location.hash || window.location.hash === '#') {
+        window.router.navigate('home', {}, { replace: true });
+    } else {
+        window.dispatchEvent(new Event('popstate'));
+    }
 });
 // Handle global errors
 window.addEventListener('error', (event) => {

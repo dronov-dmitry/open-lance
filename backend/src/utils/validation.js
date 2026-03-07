@@ -174,6 +174,26 @@ function validateProfileUpdate(profileData) {
         }
     }
 
+    if (profileData.name && typeof profileData.name === 'string' && profileData.name.length > 100) {
+        errors.push('Name must be less than 100 characters');
+    }
+
+    if (profileData.title && typeof profileData.title === 'string' && profileData.title.length > 100) {
+        errors.push('Title must be less than 100 characters');
+    }
+
+    if (profileData.bio && typeof profileData.bio === 'string' && profileData.bio.length > 1000) {
+        errors.push('Bio must be less than 1000 characters');
+    }
+
+    if (profileData.avatar_url && typeof profileData.avatar_url === 'string') {
+        if (!isValidUrl(profileData.avatar_url)) {
+            errors.push('Invalid avatar URL format');
+        } else if (profileData.avatar_url.length > 500) {
+            errors.push('Avatar URL is too long');
+        }
+    }
+
     return {
         valid: errors.length === 0,
         errors

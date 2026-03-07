@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Health Check - Open-Lance</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.ok {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.checking {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            border: 1px solid #dee2e6;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 API Health Check</h1>
+        <div class="info">
+            <strong>API URL:</strong> <span id="apiUrl">Loading...</span>
+        </div>
+        <div id="status" class="status checking">Проверка...</div>
+        <div id="details"></div>
+        <button onclick="checkAPI()">Проверить снова</button>
+    </div>
+
+    <script>
+        // Load config
+        const script = document.createElement('script');
+        script.src = 'js/config.js';
+        document.head.appendChild(script);
+        
+        script.onload = () => {
+            const apiUrl = window.APP_CONFIG?.apiBaseURL || 'Not configured';
+            document.getElementById('apiUrl').textContent = apiUrl;
+            checkAPI();
+        };
+
+        async function checkAPI() {
+            const statusDiv = document.getElementById('status');
+            const detailsDiv = document.getElementById('details');
+            
+            statusDiv.className = 'status checking';
+            statusDiv.textContent = 'Проверка...';
+            detailsDiv.innerHTML = '';
+
+            const apiUrl = window.APP_CONFIG?.apiBaseURL;
+            if (!apiUrl) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = '❌ API URL не настроен';
+                detailsDiv.innerHTML = '<p>Проверьте файл <code>js/config.js</code></p>';
+                return;
+            }
+
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                
+                const startTime = Date.now();
+                const response = await fetch(`${apiUrl}/health`, {
+                    method: 'GET',
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                const endTime = Date.now();
+                const responseTime = endTime - startTime;
+
+                if (response.ok) {
+                    const data = await response.json();
+                    statusDiv.className = 'status ok';
+                    statusDiv.textContent = `✅ API доступен (${responseTime}ms)`;
+                    detailsDiv.innerHTML = `
+                        <h3>Детали:</h3>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                        <p><strong>Время ответа:</strong> ${responseTime}ms</p>
+                        <p><strong>Статус HTTP:</strong> ${response.status}</p>
+                    `;
+                } else {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = `❌ API вернул ошибку: ${response.status}`;
+                    const text = await response.text();
+                    detailsDiv.innerHTML = `
+                        <p><strong>HTTP статус:</strong> ${response.status}</p>
+                        <pre>${text}</pre>
+                    `;
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                if (error.name === 'AbortError') {
+                    statusDiv.textContent = '❌ Таймаут: API не отвечает (10 секунд)';
+                    detailsDiv.innerHTML = `
+                        <p><strong>Возможные причины:</strong></p>
+                        <ul>
+                            <li>Cloudflare Worker не развернут</li>
+                            <li>Неправильный URL в config.js</li>
+                            <li>Проблемы с сетью</li>
+                            <li>MongoDB подключение не настроено</li>
+                        </ul>
+                        <p><strong>Решение:</strong></p>
+                        <ol>
+                            <li>Проверьте, что backend развернут: <code>cd backend && wrangler deploy</code></li>
+                            <li>Проверьте URL в <code>docs/js/config.js</code></li>
+                            <li>Проверьте настройки MongoDB в Cloudflare Workers secrets</li>
+                        </ol>
+                    `;
+                } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    statusDiv.textContent = '❌ Не удалось подключиться к API';
+                    detailsDiv.innerHTML = `
+                        <p><strong>Ошибка:</strong> ${error.message}</p>
+                        <p><strong>Возможные причины:</strong></p>
+                        <ul>
+                            <li>API URL неправильный: <code>${apiUrl}</code></li>
+                            <li>Cloudflare Worker не развернут</li>
+                            <li>CORS проблемы (маловероятно, т.к. health endpoint должен работать)</li>
+                        </ul>
+                    `;
+                } else {
+                    statusDiv.textContent = `❌ Ошибка: ${error.message}`;
+                    detailsDiv.innerHTML = `<pre>${error.stack || error.message}</pre>`;
+                }
+            }
+        }
+    </script>
+</body>
+</html>

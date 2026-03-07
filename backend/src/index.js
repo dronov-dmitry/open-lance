@@ -8,6 +8,8 @@ const authHandlers = require('./handlers/auth');
 const taskHandlers = require('./handlers/tasks');
 const userHandlers = require('./handlers/users');
 const applicationHandlers = require('./handlers/applications');
+const messageHandlers = require('./handlers/messages');
+const reviewHandlers = require('./handlers/reviews');
 const { verifyToken } = require('./handlers/authorizer');
 const response = require('./utils/response');
 
@@ -64,8 +66,22 @@ async function getRequestBody(request) {
  */
 async function handleRequest(request, env) {
     const url = new URL(request.url);
-    const path = url.pathname;
+    // Normalize path - remove trailing slash
+    let path = url.pathname;
+    if (path.endsWith('/') && path.length > 1) {
+        path = path.slice(0, -1);
+    }
     const method = request.method;
+
+    // Debug logging for resend-verification
+    if (path.includes('resend-verification')) {
+        console.log('[Backend] Resend verification request detected:', { 
+            originalPath: url.pathname, 
+            normalizedPath: path, 
+            method, 
+            url: request.url 
+        });
+    }
 
     // Handle CORS preflight
     if (method === 'OPTIONS') {
@@ -117,6 +133,8 @@ async function handleRequest(request, env) {
         };
 
         // Authentication routes (no auth required)
+        console.log('[Backend] Checking auth routes:', { path, method });
+        
         if (path === '/auth/login' && method === 'POST') {
             const result = await authHandlers.login(event);
             return addCorsHeaders(new Response(result.body, {
@@ -132,6 +150,30 @@ async function handleRequest(request, env) {
                 headers: { 'Content-Type': 'application/json' }
             }));
         }
+
+        if (path === '/auth/verify' && method === 'GET') {
+            const result = await authHandlers.verifyEmail(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        // Check resend-verification with multiple possible path formats
+        if ((path === '/auth/resend-verification' || path.startsWith('/auth/resend-verification')) && method === 'POST') {
+            console.log('[Backend] ✓ Matched resend-verification route');
+            console.log('[Backend] Path:', path, 'Method:', method);
+            console.log('[Backend] Processing resend-verification request');
+            console.log('[Backend] Event body:', event.body);
+            const result = await authHandlers.resendVerificationEmail(event);
+            console.log('[Backend] Resend verification result:', result.statusCode);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+        
+        console.log('[Backend] No public route matched, checking auth...');
 
         // Extract and verify JWT token for protected routes
         const authHeader = request.headers.get('Authorization');
@@ -223,7 +265,27 @@ async function handleRequest(request, env) {
         }
 
         // User routes
+        if (path === '/users' && method === 'GET') {
+            const result = await userHandlers.getUsers(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
         if (path === '/users/me' && method === 'GET') {
+            event.pathParameters = event.pathParameters || {};
+            event.pathParameters.userId = 'me';
+            const result = await userHandlers.getProfile(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        if (path.match(/^\/users\/[^/]+$/) && method === 'GET') {
+            event.pathParameters = event.pathParameters || {};
+            event.pathParameters.userId = path.split('/')[2];
             const result = await userHandlers.getProfile(event);
             return addCorsHeaders(new Response(result.body, {
                 status: result.statusCode,
@@ -232,7 +294,30 @@ async function handleRequest(request, env) {
         }
 
         if (path === '/users/me' && method === 'PUT') {
+            event.pathParameters = event.pathParameters || {};
+            event.pathParameters.userId = 'me';
             const result = await userHandlers.updateProfile(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        // --- Reviews ---
+        if (path.match(/^\/users\/[^/]+\/reviews$/) && method === 'GET') {
+            event.pathParameters = event.pathParameters || {};
+            event.pathParameters.userId = path.split('/')[2];
+            const result = await reviewHandlers.getUserReviews(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        if (path.match(/^\/users\/[^/]+\/reviews$/) && method === 'POST') {
+            event.pathParameters = event.pathParameters || {};
+            event.pathParameters.userId = path.split('/')[2];
+            const result = await reviewHandlers.submitReview(event);
             return addCorsHeaders(new Response(result.body, {
                 status: result.statusCode,
                 headers: { 'Content-Type': 'application/json' }
@@ -250,6 +335,49 @@ async function handleRequest(request, env) {
         if (path.match(/^\/users\/me\/contacts\/[^/]+$/) && method === 'DELETE') {
             event.pathParameters.linkId = path.split('/')[4];
             const result = await userHandlers.removeContactLink(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        // Admin routes
+        if (path === '/admin/users/role' && method === 'PUT') {
+            const result = await userHandlers.updateUserRole(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        if (path === '/admin/users/ban' && method === 'PUT') {
+            const result = await userHandlers.updateUserStatus(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        // Messaging routes
+        if (path === '/messages' && method === 'POST') {
+            const result = await messageHandlers.sendMessage(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        if (path === '/messages' && method === 'GET') {
+            const result = await messageHandlers.getMessages(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        if (path.match(/^\/messages\/[^/]+\/read$/) && method === 'PUT') {
+            event.pathParameters.messageId = path.split('/')[2];
+            const result = await messageHandlers.markMessageRead(event);
             return addCorsHeaders(new Response(result.body, {
                 status: result.statusCode,
                 headers: { 'Content-Type': 'application/json' }
@@ -309,6 +437,6 @@ async function handleRequest(request, env) {
  */
 export default {
     async fetch(request, env, ctx) {
-        return handleRequest(request, env);
+        return handleRequest(request, env, ctx);
     }
 };

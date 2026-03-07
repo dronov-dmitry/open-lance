@@ -18,7 +18,7 @@ async function getMyApplications(event) {
 
         // Get all applications for this user
         const applications = await mongoManager.find('applications', {
-            userId: userId
+            worker_id: userId
         });
 
         console.log('[getMyApplications] Found applications:', applications.length);
@@ -27,7 +27,7 @@ async function getMyApplications(event) {
         const applicationsWithTasks = await Promise.all(
             applications.map(async (app) => {
                 const task = await mongoManager.findOne('tasks', {
-                    _id: new ObjectId(app.taskId)
+                    task_id: app.task_id
                 });
                 
                 return {
@@ -59,20 +59,20 @@ async function getTaskApplications(event) {
 
         // Verify task ownership
         const task = await mongoManager.findOne('tasks', {
-            _id: new ObjectId(taskId)
+            task_id: taskId
         });
 
         if (!task) {
             return response.notFound('Task not found');
         }
 
-        if (task.ownerId !== userId) {
+        if (task.owner_id !== userId) {
             return response.forbidden('You do not have permission to view applications for this task');
         }
 
         // Get all applications for this task
         const applications = await mongoManager.find('applications', {
-            taskId: taskId
+            task_id: taskId
         });
 
         console.log('[getTaskApplications] Found applications:', applications.length);
@@ -81,7 +81,7 @@ async function getTaskApplications(event) {
         const applicationsWithUsers = await Promise.all(
             applications.map(async (app) => {
                 const user = await mongoManager.findOne('users', {
-                    _id: new ObjectId(app.userId)
+                    user_id: app.worker_id
                 });
                 
                 return {
@@ -125,7 +125,7 @@ async function updateApplicationStatus(event) {
 
         // Get application
         const application = await mongoManager.findOne('applications', {
-            _id: new ObjectId(applicationId)
+            application_id: applicationId
         });
 
         if (!application) {
@@ -134,21 +134,21 @@ async function updateApplicationStatus(event) {
 
         // Get task to verify ownership
         const task = await mongoManager.findOne('tasks', {
-            _id: new ObjectId(application.taskId)
+            task_id: application.task_id
         });
 
-        if (!task || task.ownerId !== userId) {
+        if (!task || task.owner_id !== userId) {
             return response.forbidden('You do not have permission to update this application');
         }
 
         // Update application
         const result = await mongoManager.updateOne(
             'applications',
-            { _id: new ObjectId(applicationId) },
+            { application_id: applicationId },
             {
                 $set: {
                     status: body.status,
-                    updatedAt: new Date().toISOString()
+                    updated_at: new Date().toISOString()
                 }
             }
         );

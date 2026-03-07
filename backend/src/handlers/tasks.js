@@ -47,6 +47,20 @@ async function getTasks(event) {
         // Get tasks from MongoDB
         const tasks = await mongoManager.find('tasks', query, options);
 
+        // Fetch authors
+        const ownerIds = [...new Set(tasks.map(t => t.owner_id))];
+        if (ownerIds.length > 0) {
+            const users = await mongoManager.find('users', { user_id: { $in: ownerIds } });
+            const userMap = users.reduce((acc, u) => {
+                acc[u.user_id] = { name: u.name, avatar_url: u.avatar_url };
+                return acc;
+            }, {});
+            
+            tasks.forEach(t => {
+                t.author = userMap[t.owner_id] || { name: 'Неизвестный автор' };
+            });
+        }
+
         // Remove MongoDB _id field from response
         const cleanTasks = tasks.map(task => {
             const { _id, ...cleanTask } = task;
@@ -65,7 +79,7 @@ async function getTasks(event) {
  */
 async function getTask(event) {
     try {
-        const taskId = event.pathParameters.taskId;
+        const taskId = event.pathParameters.id || event.pathParameters.taskId;
 
         if (!validation.isValidUUID(taskId)) {
             return response.error('Invalid task ID');
@@ -78,8 +92,22 @@ async function getTask(event) {
             return response.notFound('Task not found');
         }
 
-        // Remove MongoDB _id field
-        const { _id, ...cleanTask } = task;
+        // Fetch author
+        if (task.owner_id) {
+            const author = await mongoManager.findOne('users', { user_id: task.owner_id });
+            if (author) {
+                task.author = { name: author.name, avatar_url: author.avatar_url };
+            } else {
+                task.author = { name: 'Неизвестный автор' };
+            }
+        }
+
+        // Deeply clone and remove _id to prevent MongoDB BSON error when serializing
+        const cleanTask = JSON.parse(JSON.stringify(task));
+        delete cleanTask._id;
+        if (cleanTask.applications && Array.isArray(cleanTask.applications)) {
+            cleanTask.applications.forEach(app => delete app._id);
+        }
 
         return response.success(cleanTask);
     } catch (error) {
@@ -222,8 +250,9 @@ async function deleteTask(event) {
             return response.notFound('Task not found');
         }
 
-        // Check ownership
-        if (existingTask.owner_id !== userId) {
+        const userRole = event.requestContext.authorizer.role;
+        // Check ownership or admin role
+        if (existingTask.owner_id !== userId && userRole !== 'ADMIN') {
             return response.forbidden('You can only delete your own tasks');
         }
 
@@ -245,7 +274,7 @@ async function deleteTask(event) {
  */
 async function applyToTask(event) {
     try {
-        const taskId = event.pathParameters.taskId;
+        const taskId = event.pathParameters.taskId || event.pathParameters.id;
         const body = JSON.parse(event.body);
         const { message } = body.data || body;
         const userId = event.requestContext.authorizer.userId;
