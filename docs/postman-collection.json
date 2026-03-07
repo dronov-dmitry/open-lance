@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Open-Lance API",
-    "description": "API collection for Open-Lance P2P Freelance Marketplace",
+    "description": "API collection for Open-Lance Cloud Freelance Marketplace",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {

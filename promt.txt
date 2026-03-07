@@ -11,7 +11,7 @@ Database: MongoDB Atlas (Shared Cluster — Forever Free).
 Backend Layer: Serverless (AWS Lambda / Vercel Functions / Cloudflare Workers) to bridge Frontend and DB.
 
 2. Core Concept
-P2P-платформа для поиска задач. Единый профиль для всех: каждый пользователь может создавать задачи и откликаться на них. Платформа не обрабатывает платежи — пользователи договариваются о цене и способе оплаты напрямую.
+Облачная платформа для поиска задач. Единый профиль для всех: каждый пользователь может создавать задачи и откликаться на них. Платформа не обрабатывает платежи — пользователи договариваются о цене и способе оплаты напрямую.
 
 3. Functional Requirements
 User Profiles (Unified)

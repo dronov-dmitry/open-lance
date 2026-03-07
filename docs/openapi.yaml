@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Open-Lance API
   description: |
-    REST API for Open-Lance P2P Freelance Marketplace.
+    REST API for Open-Lance Cloud Freelance Marketplace.
     
     ## Features
     - User authentication with JWT

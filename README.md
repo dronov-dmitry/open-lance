@@ -1,4 +1,4 @@
-# Open-Lance - P2P Фриланс Платформа
+# Open-Lance - Облачная Фриланс Платформа
 
 > Serverless платформа для фриланса на Cloudflare Workers и MongoDB Atlas
 
@@ -16,7 +16,7 @@
 
 ## 🎯 О проекте
 
-Open-Lance - это современная P2P платформа для фриланса, где каждый пользователь может быть одновременно заказчиком и исполнителем.
+Open-Lance - это современная облачная платформа для фриланса, где каждый пользователь может быть одновременно заказчиком и исполнителем.
 
 ### Основные возможности
 
@@ -34,9 +34,9 @@ Frontend (GitHub Pages)
         ↓ HTTPS
    Cloudflare Workers (Edge)
    (JWT Auth + API Routes)
-        ↓
-   MongoDB Atlas
-   (Cloud Database)
+      ↙   ↘
+EmailJS     MongoDB Atlas
+(Emails)    (Cloud Database)
 ```
 
 **Компоненты:**
