@@ -47,6 +47,12 @@ window.toggleUserReviewForm = function(userId) {
 
 // Submit review directly from users list
 window.submitUserReview = async function(userId) {
+    if (!window.auth.isLoggedIn()) {
+        window.utils.showToast('Войдите в систему, чтобы оставить отзыв', 'warning');
+        document.getElementById('loginModal').classList.add('active');
+        return;
+    }
+
     const ratingEl = document.getElementById('user-review-rating-' + userId);
     const textEl   = document.getElementById('user-review-text-'   + userId);
     const rating  = parseInt(ratingEl ? ratingEl.value : '5', 10);
@@ -76,7 +82,7 @@ window.router.register('users', async () => {
     try {
         const response = await window.api.getUsers();
         const users = response.data || response;
-        
+
         // Determine if current user is admin and get their ID
         let isAdmin = false;
         let currentUserId = null;
@@ -97,37 +103,31 @@ window.router.register('users', async () => {
                 </div>
             `;
         }
-        
+
         let usersHtml = '<div class="users-grid">';
-        
+
         users.forEach(user => {
-            // Updated roles parsing (fallback to old ones just in case)
-            let roleText = 'Фрилансер';
+            let roleText = '';
             let roleClass = 'freelancer';
-            
+
             if (user.role === 'ADMIN') {
                 roleText = 'Администратор';
                 roleClass = 'admin';
-            } else if (user.role === 'USER') {
-                roleText = 'Пользователь';
-                roleClass = 'freelancer';
             } else if (user.role === 'client') {
                 roleText = 'Заказчик';
             }
 
-            // Banned Badge
             const isBanned = user.status === 'BANNED';
             const banBadge = isBanned ? '<span class="badge error">ЗАБЛОКИРОВАН</span>' : '';
-                             
+
             let actionButtons = `
                 <button onclick="window.router.navigate('profile', { id: '${user.user_id}' });" class="btn btn-secondary" style="font-size: 0.8rem; padding: 5px 10px; margin-right: 10px; margin-top: 10px;">
                     Подробнее
                 </button>
             `;
-            
+
             const isOtherUser = currentUserId && currentUserId !== user.user_id && !isBanned;
 
-            // "Send Message" button for any user other than self
             if (isOtherUser) {
                 actionButtons += `
                     <button onclick="window.router.navigate('messages'); setTimeout(() => window.showReplyBox('${user.user_id}', '${(user.name || 'Без имени').replace(/'/g, "\\'")}'), 100);" class="btn btn-primary" style="font-size: 0.8rem; padding: 5px 10px; margin-right: 10px; margin-top: 10px;">
@@ -136,9 +136,9 @@ window.router.register('users', async () => {
                 `;
             }
 
-            // "Leave review" button for logged-in users looking at other profiles
+            // Review button and inline form
             const reviewFormHtml = isOtherUser ? `
-                <button onclick="window.toggleUserReviewForm('${user.user_id}')" class="btn btn-secondary" style="font-size: 0.8rem; padding: 5px 10px; margin-right: 10px; margin-top: 10px;">
+                <button onclick="window.toggleUserReviewForm('${user.user_id}')" class="btn btn-outline" style="font-size: 0.8rem; padding: 5px 10px; margin-right: 10px; margin-top: 10px; color: #2c3e50; border-color: #2c3e50;">
                     ⭐ Отзыв
                 </button>
                 <div id="user-review-form-${user.user_id}" style="display: none; margin-top: 12px; padding: 12px; border: 1px solid #f39c12; border-radius: 8px; background: #fffdf5;">
@@ -152,7 +152,7 @@ window.router.register('users', async () => {
                     </select>
                     <textarea id="user-review-text-${user.user_id}" rows="3" placeholder="Расскажите об опыте работы с пользователем..." style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-family: inherit; resize: vertical; margin-bottom: 8px;"></textarea>
                     <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                        <button onclick="window.toggleUserReviewForm('${user.user_id}')" class="btn btn-outline" style="font-size: 0.8rem; padding: 5px 12px;">Отмена</button>
+                        <button onclick="window.toggleUserReviewForm('${user.user_id}')" class="btn btn-outline" style="font-size: 0.8rem; padding: 5px 12px; color: #2c3e50; border-color: #2c3e50;">Отмена</button>
                         <button onclick="window.submitUserReview('${user.user_id}')" class="btn btn-primary" style="font-size: 0.8rem; padding: 5px 12px;">Опубликовать</button>
                     </div>
                 </div>
@@ -161,7 +161,7 @@ window.router.register('users', async () => {
             if (isAdmin) {
                 actionButtons += `
                     <div class="admin-controls" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color); display: flex; gap: 10px;">
-                        ${user.role !== 'ADMIN' ? `<button onclick="window.makeAdmin('${user.user_id}')" class="btn btn-outline" style="font-size: 0.8rem; padding: 5px 10px;">Сделать админом</button>` : ''}
+                        ${user.role !== 'ADMIN' ? `<button onclick="window.makeAdmin('${user.user_id}')" class="btn btn-outline" style="font-size: 0.8rem; padding: 5px 10px; color: #2c3e50; border-color: #2c3e50;">Сделать админом</button>` : ''}
                         ${!isBanned ? `<button onclick="window.banUser('${user.user_id}')" class="btn btn-outline" style="font-size: 0.8rem; padding: 5px 10px; border-color: var(--error-color); color: var(--error-color);">Заблокировать</button>` : ''}
                     </div>
                 `;
@@ -188,9 +188,9 @@ window.router.register('users', async () => {
                 </div>
             `;
         });
-        
+
         usersHtml += '</div>';
-        
+
         return `
             <div class="users-container">
                 <h2>Зарегистрированные пользователи</h2>
@@ -207,29 +207,3 @@ window.router.register('users', async () => {
         `;
     }
 });
-
-
-// Admin Action Handlers
-window.makeAdmin = async (userId) => {
-    if (!confirm('Вы уверены, что хотите назначить этого пользователя администратором?')) return;
-    try {
-        await window.api.updateUserRole(userId, 'ADMIN');
-        window.utils.showToast('Роль успешно обновлена', 'success');
-        window.router.navigate('users'); // Refresh
-    } catch (error) {
-        window.utils.showToast(error.message, 'error');
-    }
-};
-
-window.banUser = async (userId) => {
-    if (!confirm('Вы уверены, что хотите заблокировать этого пользователя?')) return;
-    try {
-        await window.api.updateUserStatus(userId, 'BANNED');
-        window.utils.showToast('Пользователь заблокирован', 'success');
-        window.router.navigate('users'); // Refresh
-    } catch (error) {
-        window.utils.showToast(error.message, 'error');
-    }
-};
-
-

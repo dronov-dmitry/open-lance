@@ -88,7 +88,7 @@ window.router.register('task-details', async function(props) {
                                 
                                 ${myApplication.status === 'PENDING' ? `
                                     <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px;">
-                                        <button onclick="window.toggleEditMyApplication()" class="btn btn-outline">Изменить отклик</button>
+                                        <button onclick="window.toggleEditMyApplication()" class="btn btn-outline" style="color: #2c3e50; border-color: #2c3e50;">Изменить отклик</button>
                                         <button onclick="window.withdrawMyApplication('${myApplication.application_id}')" class="btn btn-outline" style="color: #e74c3c; border-color: #e74c3c;">Отозвать отклик</button>
                                     </div>
                                 ` : ''}

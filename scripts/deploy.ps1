@@ -71,9 +71,6 @@ if ($Help) {
     Write-Host "    .\deploy.ps1 -Environment local        # Configure for local testing"
     Write-Host "    .\deploy.ps1 -SkipBackend              # Configure only"
     Write-Host ""
-    Write-Host "Changes in v3.0:"
-    Write-Host "    - Cloudflare Workers (Edge computing)"
-    Write-Host "    - MongoDB Atlas (cloud database)"
     Write-Host "    - No AWS required"
     Write-Host ""
     exit 0
@@ -85,9 +82,9 @@ if ($Help) {
 
 function Test-Prerequisites {
     Write-Header "Checking Prerequisites"
-    
+
     $missingTools = @()
-    
+
     # Check Node.js
     try {
         $nodeVersion = node --version 2>$null
@@ -102,7 +99,7 @@ function Test-Prerequisites {
         $missingTools += "Node.js"
         Write-ErrorMsg "Node.js not found"
     }
-    
+
     # Check npm
     try {
         $npmVersion = npm --version 2>$null
@@ -112,7 +109,7 @@ function Test-Prerequisites {
         $missingTools += "npm"
         Write-ErrorMsg "npm not found"
     }
-    
+
     # Check Wrangler
     try {
         $wranglerVersion = wrangler --version 2>$null
@@ -127,7 +124,7 @@ function Test-Prerequisites {
         Write-WarningMsg "Wrangler CLI not found, installing..."
         npm install -g wrangler
     }
-    
+
     if ($missingTools.Count -gt 0) {
         Write-ErrorMsg "Missing required tools: $($missingTools -join ', ')"
         Write-Host ""
@@ -146,9 +143,9 @@ function Test-Prerequisites {
 
 function Test-CloudflareAuth {
     Write-Header "Checking Cloudflare Authentication"
-    
+
     $whoamiOutput = wrangler whoami 2>&1 | Out-String
-    
+
     if ($whoamiOutput -match "You are not authenticated" -or $whoamiOutput -match "not logged in") {
         Write-WarningMsg "Cloudflare authentication not configured"
         Write-Host ""
@@ -158,7 +155,6 @@ function Test-CloudflareAuth {
         $runLogin = Read-Host "Run 'wrangler login' now? (y/n)"
         if ($runLogin -eq "y") {
             wrangler login
-            # Verify authentication worked
             $whoamiCheck = wrangler whoami 2>&1 | Out-String
             if ($whoamiCheck -match "You are not authenticated") {
                 Write-ErrorMsg "Authentication failed. Please run 'wrangler login' manually."
@@ -180,61 +176,54 @@ function Test-CloudflareAuth {
 
 function Get-DeploymentConfig {
     Write-Header "Configuration"
-    
+
     $configFile = Join-Path $ProjectRoot ".env"
-    
-    # Target Environment Selection
+
     Write-Host ""
     Write-Host "Select Target Environment:" -ForegroundColor Cyan
     Write-Host "1) DEVELOPMENT (Local Testing, creates .dev.vars, uses DEV_ variables)" -ForegroundColor White
     Write-Host "2) PRODUCTION (Cloudflare Workers, deploys to cloud, uses PROD_ variables)" -ForegroundColor White
-    
+
     do {
         $envChoice = Read-Host "Choose an option (1 or 2)"
     } until ($envChoice -match "^[12]$")
-    
+
     if ($envChoice -eq "1") {
         $script:Environment = "local"
         $script:EnvPrefix = "DEV_"
     } else {
-        $script:Environment = "dev" # Default for cloud
+        $script:Environment = "PROD"
         $script:EnvPrefix = "PROD_"
-        # If cloud deployment is selected, we MUST check auth
         Test-CloudflareAuth
     }
 
     if (Test-Path $configFile) {
         Write-Info "Found existing configuration in .env"
-        # Grab raw content for replacement later
         $envContent = Get-Content $configFile -Raw
-        
-        # Parse .env file
+
         $envData = Get-Content $configFile | Where-Object { $_ -match '=' -and $_ -notmatch '^#' } | ForEach-Object {
             $parts = $_ -split '=', 2
             @{ ($parts[0].Trim()) = ($parts[1].Trim()) }
         }
-        
+
         $envVars = @{}
         foreach ($item in $envData) {
             foreach ($key in $item.Keys) {
-                # Remove quotes if present
                 $val = $item[$key]
                 if ($val -match "^`"(.*)`"$") { $val = $Matches[1] }
                 elseif ($val -match "^'(.*)'$") { $val = $Matches[1] }
                 $envVars[$key] = $val
             }
         }
-        
-        # Restore user's choice (don't let the saved config override what they just selected)
+
         if ($envChoice -eq "1") {
             $script:Environment = "local"
             $script:EnvPrefix = "DEV_"
         } else {
-            $script:Environment = "dev"
+            $script:Environment = "PROD"
             $script:EnvPrefix = "PROD_"
         }
-        
-        # Helper to get prefixed or fallback variable
+
         function Get-EnvVar {
             param([string]$Key)
             if ($envVars.ContainsKey("$($script:EnvPrefix)$Key")) { return $envVars["$($script:EnvPrefix)$Key"] }
@@ -252,19 +241,18 @@ function Get-DeploymentConfig {
         $script:EMAILJS_SERVICE_ID = Get-EnvVar 'EMAILJS_SERVICE_ID'
         $script:EMAILJS_TEMPLATE_ID = Get-EnvVar 'EMAILJS_TEMPLATE_ID'
         $script:EMAILJS_PRIVATE_KEY = Get-EnvVar 'EMAILJS_PRIVATE_KEY'
-        
+
         $hasConfig = -not [string]::IsNullOrWhiteSpace($script:MONGODB_URI)
-        
+
         if ($hasConfig) {
             $useExisting = Read-Host "Found existing $($script:EnvPrefix) configuration. Use it? (y/n)"
-            
+
             if ($useExisting -eq "y") {
-                # We need to write the chosen prefix config into the raw unprefixed keys in .env
                 Write-Info "Activating $($script:EnvPrefix) profile..."
-                
+
                 $newConfig = @{}
                 foreach ($item in $envData) { foreach ($key in $item.Keys) { $newConfig[$key] = $item[$key] } }
-                
+
                 if ($script:EnvPrefix -eq "PROD_") {
                     $newConfig['Environment'] = "`"$($script:Environment)`""
                     if ($script:MONGODB_URI) { $newConfig['MONGODB_URI'] = "`"$script:MONGODB_URI`"" }
@@ -277,31 +265,26 @@ function Get-DeploymentConfig {
                     if ($script:EMAILJS_TEMPLATE_ID) { $newConfig['EMAILJS_TEMPLATE_ID'] = "`"$script:EMAILJS_TEMPLATE_ID`"" }
                     if ($script:EMAILJS_PRIVATE_KEY) { $newConfig['EMAILJS_PRIVATE_KEY'] = "`"$script:EMAILJS_PRIVATE_KEY`"" }
                 }
-                
+
                 $configContent = "# Open-Lance Deployment Configuration v3.0`n`n"
-                
                 $configContent += "### Active Configuration (Used by Backend) ###`n"
                 foreach ($key in $newConfig.Keys | Where-Object { $_ -notmatch '^(DEV_|PROD_)' } | Sort-Object) {
                     $configContent += "$key=$($newConfig[$key])`n"
                 }
-                
                 $configContent += "`n### DEVELOPMENT Profile ###`n"
                 foreach ($key in $newConfig.Keys | Where-Object { $_ -match '^DEV_' } | Sort-Object) {
                     $configContent += "$key=$($newConfig[$key])`n"
                 }
-
                 $configContent += "`n### PRODUCTION Profile ###`n"
                 foreach ($key in $newConfig.Keys | Where-Object { $_ -match '^PROD_' } | Sort-Object) {
                     $configContent += "$key=$($newConfig[$key])`n"
                 }
-                
                 $configContent | Out-File -FilePath $configFile -Encoding UTF8
 
-                # Check and report EmailJS configuration status
                 Write-Host ""
-                if (-not [string]::IsNullOrWhiteSpace($script:EMAILJS_PUBLIC_KEY) -and 
-                    -not [string]::IsNullOrWhiteSpace($script:EMAILJS_SERVICE_ID) -and 
-                    -not [string]::IsNullOrWhiteSpace($script:EMAILJS_TEMPLATE_ID) -and 
+                if (-not [string]::IsNullOrWhiteSpace($script:EMAILJS_PUBLIC_KEY) -and
+                    -not [string]::IsNullOrWhiteSpace($script:EMAILJS_SERVICE_ID) -and
+                    -not [string]::IsNullOrWhiteSpace($script:EMAILJS_TEMPLATE_ID) -and
                     -not [string]::IsNullOrWhiteSpace($script:EMAILJS_PRIVATE_KEY)) {
                     Write-Success "EmailJS configuration is active"
                 } else {
@@ -310,9 +293,7 @@ function Get-DeploymentConfig {
                 return
             }
         }
-        
-        # If we got here, they chose "n" or the config was missing
-        # Clear all loaded variables so the script actually prompts for them
+
         $script:MONGODB_URI = $null
         $script:MONGODB_DATABASE = $null
         $script:FRONTEND_URL = $null
@@ -332,7 +313,7 @@ function Get-DeploymentConfig {
 
 function Set-DeploymentConfig {
     Write-Host "`nPlease provide deployment configuration:`n" -ForegroundColor Cyan
-    
+
     # MongoDB Atlas
     Write-Host ""
     Write-Host "MongoDB Atlas Configuration Required!" -ForegroundColor Yellow
@@ -347,7 +328,7 @@ function Set-DeploymentConfig {
     Write-Host "Important: Replace <username> and <password> with your actual credentials!" -ForegroundColor Yellow
     Write-Host "          Remove < > brackets!" -ForegroundColor Yellow
     Write-Host ""
-    
+
     do {
         $script:MONGODB_URI = Read-Host "MongoDB Connection URI"
         if ([string]::IsNullOrWhiteSpace($MONGODB_URI)) {
@@ -356,23 +337,23 @@ function Set-DeploymentConfig {
             Write-Host "Get it from: https://cloud.mongodb.com/ -> Database -> Connect" -ForegroundColor Gray
         }
     } while ([string]::IsNullOrWhiteSpace($MONGODB_URI))
-    
+
     $script:MONGODB_API_KEY = ""
     Write-Host "[OK] Using Direct MongoDB Connection" -ForegroundColor Green
-    
+
     $dbInput = Read-Host "MongoDB Database Name [open-lance]"
     if ([string]::IsNullOrWhiteSpace($dbInput)) {
         $script:MONGODB_DATABASE = "open-lance"
     } else {
         $script:MONGODB_DATABASE = $dbInput
     }
-    
+
     # Frontend URL
     $script:FRONTEND_URL = Read-Host "Frontend URL (e.g., https://open-lance.pages.dev) [*]"
     if ([string]::IsNullOrWhiteSpace($FRONTEND_URL)) {
         $script:FRONTEND_URL = "*"
     }
-    
+
     # EmailJS Configuration
     Write-Host ""
     Write-Host "Email Verification Setup (EmailJS)" -ForegroundColor Yellow
@@ -382,39 +363,13 @@ function Set-DeploymentConfig {
     Write-Host "Setup steps:" -ForegroundColor Cyan
     Write-Host "  1. Register at https://www.emailjs.com/" -ForegroundColor Gray
     Write-Host "  2. Add Email Service (Gmail, Outlook, etc.)" -ForegroundColor Gray
-    Write-Host "     Service ID is the identifier of the email account you connected to EmailJS" -ForegroundColor Gray
-    Write-Host "     (e.g., your Gmail or Yandex). It tells the service which account to use for sending." -ForegroundColor Gray
-    Write-Host "     To find Service ID:" -ForegroundColor Gray
-    Write-Host "     - Go to your EmailJS account" -ForegroundColor Gray
-    Write-Host "     - In the left sidebar, select the first item - 'Email Services'" -ForegroundColor Gray
-    Write-Host "     - You'll see a card of your connected email service (e.g., with Gmail logo)" -ForegroundColor Gray
-    Write-Host "     - In this card, right under the name (e.g., 'Gmail'), you'll see 'Service ID'" -ForegroundColor Gray
-    Write-Host "     - It usually looks like 'service_xxxxxxx'" -ForegroundColor Gray
-    Write-Host "     - Click the copy icon next to this ID" -ForegroundColor Gray
     Write-Host "  3. Create Email Template (use emailjs_template.html as reference)" -ForegroundColor Gray
-    Write-Host "     Template ID is the unique identifier of the specific email template you created." -ForegroundColor Gray
-    Write-Host "     It tells the service which design and variables (like {{verification_link}}) to use." -ForegroundColor Gray
-    Write-Host "     To find Template ID:" -ForegroundColor Gray
-    Write-Host "     - Go to your EmailJS account" -ForegroundColor Gray
-    Write-Host "     - In the left sidebar, select 'Email Templates' (icon with paper sheet)" -ForegroundColor Gray
-    Write-Host "     - You'll see a list of your templates. Find the one created for email verification" -ForegroundColor Gray
-    Write-Host "     - Right under the template name (e.g., 'My Default Template'), you'll see 'ID'" -ForegroundColor Gray
-    Write-Host "     - It usually looks like 'template_xxxxxxx'" -ForegroundColor Gray
-    Write-Host "     - Click the copy icon next to this ID" -ForegroundColor Gray
-    Write-Host "  4. Get Public Key:" -ForegroundColor Gray
-    Write-Host "     - Go to your EmailJS dashboard" -ForegroundColor Gray
-    Write-Host "     - Click on 'Account' in the left sidebar (bottom icon/tab)" -ForegroundColor Gray
-    Write-Host "     - On the opened page, you'll see 'API Keys' section" -ForegroundColor Gray
-    Write-Host "     - In 'Public Key' field you'll see a random string (usually starts with 'user_' or just letters)" -ForegroundColor Gray
-    Write-Host "     - Click the 'Copy' icon next to the key" -ForegroundColor Gray
-    Write-Host "  5. Get Private Key:" -ForegroundColor Gray
-    Write-Host "     - In the same 'API Keys' section next to 'Public Key', you'll see 'Private Key'" -ForegroundColor Gray
-    Write-Host "     - If it's empty, click 'Regenerate' and copy the resulting string" -ForegroundColor Gray
-    Write-Host "     - Note: This is mandatory if API access from non-browser environments is strictly enabled" -ForegroundColor Gray
+    Write-Host "  4. Get Public Key from Account -> API Keys" -ForegroundColor Gray
+    Write-Host "  5. Get Private Key from Account -> API Keys" -ForegroundColor Gray
     Write-Host ""
     Write-Host "You can skip EmailJS setup (leave empty) to use fallback mode (links in logs)" -ForegroundColor Yellow
     Write-Host ""
-    
+
     $script:EMAILJS_PUBLIC_KEY = Read-Host "EmailJS Public Key (leave empty to skip)"
     if (-not [string]::IsNullOrWhiteSpace($script:EMAILJS_PUBLIC_KEY)) {
         $script:EMAILJS_SERVICE_ID = Read-Host "EmailJS Service ID"
@@ -444,7 +399,7 @@ function Set-DeploymentConfig {
         $script:EMAILJS_PRIVATE_KEY = ""
         Write-Host "[INFO] EmailJS skipped - using fallback mode (links in logs)" -ForegroundColor Cyan
     }
-    
+
     # Backend API URL (PRODUCTION only - known after first deploy)
     Set-Variable -Name API_URL -Value "" -Scope Script
     if ($script:EnvPrefix -eq "PROD_") {
@@ -463,7 +418,7 @@ function Set-DeploymentConfig {
     # Generate JWT Secret
     Write-Info "Generating JWT secret..."
     $script:JWT_SECRET = & node -e 'console.log(require(\"crypto\").randomBytes(32).toString(\"hex\"))'
-    
+
     # Save configuration
     $newConfig = @{}
     $envDataPath = Join-Path $ProjectRoot ".env"
@@ -500,27 +455,22 @@ function Set-DeploymentConfig {
     if ($script:API_URL) { $newConfig["$($script:EnvPrefix)API_URL"] = "`"$script:API_URL`"" }
 
     $configContent = "# Open-Lance Deployment Configuration v3.0`n`n"
-    
     $configContent += "### Active Configuration (Used by Backend) ###`n"
     foreach ($key in $newConfig.Keys | Where-Object { $_ -notmatch '^(DEV_|PROD_)' } | Sort-Object) {
         $configContent += "$key=$($newConfig[$key])`n"
     }
-    
     $configContent += "`n### DEVELOPMENT Profile ###`n"
     foreach ($key in $newConfig.Keys | Where-Object { $_ -match '^DEV_' } | Sort-Object) {
         $configContent += "$key=$($newConfig[$key])`n"
     }
-
     $configContent += "`n### PRODUCTION Profile ###`n"
     foreach ($key in $newConfig.Keys | Where-Object { $_ -match '^PROD_' } | Sort-Object) {
         $configContent += "$key=$($newConfig[$key])`n"
     }
-    
-    
+
     $configContent | Out-File -FilePath $configFile -Encoding UTF8
     Write-Success "Configuration saved to .env (Active and $script:EnvPrefix profile)"
-    
-    # Check if .gitignore exists, .env is usually already in there
+
     $gitignorePath = Join-Path $ProjectRoot ".gitignore"
     if (Test-Path $gitignorePath) {
         $gitignoreContent = Get-Content $gitignorePath -Raw
@@ -536,30 +486,27 @@ function Set-DeploymentConfig {
 
 function Deploy-Backend {
     Write-Header "Deploying Backend (Cloudflare Workers)"
-    
+
     $backendDir = Join-Path $ProjectRoot "backend"
     Set-Location $backendDir
-    
-    # Install dependencies
+
     Write-Info "Installing backend dependencies..."
     npm install
-    
+
     if ($Environment -eq "local") {
         Write-Info "Setting local secrets in .dev.vars for local testing..."
-        
+
         $devVarsContent = @"
 MONGODB_URI="$MONGODB_URI"
 JWT_SECRET="$JWT_SECRET"
 "@
         $devVarsContent | Out-File -FilePath ".dev.vars" -Encoding UTF8
         Write-Host "[OK] Local secrets configured in .dev.vars" -ForegroundColor Green
-        
-        # Determine local URL
+
         $script:API_URL = "http://127.0.0.1:8787"
         Write-Success "Local backend configured successfully"
         Write-Info "Local Worker URL: $API_URL"
-        
-        # Save to .env and exit (no need to deploy to Cloudflare)
+
         $configFile = Join-Path $ProjectRoot ".env"
         $envContent = Get-Content -Path $configFile -Raw
         if ($envContent -match "(?m)^API_URL=.*$") {
@@ -568,42 +515,37 @@ JWT_SECRET="$JWT_SECRET"
         } else {
             Add-Content -Path $configFile -Value "`nAPI_URL=`"$API_URL`""
         }
-        
+
         Set-Location $ProjectRoot
         return $true
     }
-    
-    # Set Cloudflare Workers secrets
+
     Write-Info "Setting Cloudflare Workers secrets..."
-    
-    # Check EmailJS configuration before setting secrets
-    $hasEmailJS = (-not [string]::IsNullOrWhiteSpace($EMAILJS_PUBLIC_KEY) -and 
-                    -not [string]::IsNullOrWhiteSpace($EMAILJS_SERVICE_ID) -and 
+
+    $hasEmailJS = (-not [string]::IsNullOrWhiteSpace($EMAILJS_PUBLIC_KEY) -and
+                    -not [string]::IsNullOrWhiteSpace($EMAILJS_SERVICE_ID) -and
                     -not [string]::IsNullOrWhiteSpace($EMAILJS_TEMPLATE_ID) -and
                     -not [string]::IsNullOrWhiteSpace($EMAILJS_PRIVATE_KEY))
-    
+
     if ($hasEmailJS) {
         Write-Info "EmailJS configuration detected - will install EmailJS secrets to Cloudflare Workers"
     } else {
         Write-WarningMsg "EmailJS not configured - skipping EmailJS secrets (emails will use fallback mode)"
     }
-    
+
     # MongoDB URI
     Write-Info "Setting MONGODB_URI secret..."
     $tempMongoParams = Join-Path $env:TEMP "mongodb_uri.txt"
     [IO.File]::WriteAllText($tempMongoParams, $MONGODB_URI)
     $secretResult1 = cmd.exe /c "wrangler secret put MONGODB_URI < ""$tempMongoParams""" 2>&1
     Remove-Item $tempMongoParams -ErrorAction SilentlyContinue
-    
-    # Check if secret was actually set (ignore warnings)
     if ($secretResult1 -match "error|failed" -and $secretResult1 -notmatch "Created|Updated") {
         Write-ErrorMsg "Failed to set MONGODB_URI secret"
         Write-Host $secretResult1
         exit 1
     }
     Write-Host "[OK] MONGODB_URI secret set" -ForegroundColor Green
-    
-    # MongoDB Data API Key (if using Data API)
+
     if (-not [string]::IsNullOrWhiteSpace($MONGODB_API_KEY)) {
         Write-Info "Setting MONGODB_API_KEY secret..."
         $tempMongoApiKey = Join-Path $env:TEMP "mongodb_api_key.txt"
@@ -616,23 +558,20 @@ JWT_SECRET="$JWT_SECRET"
             Write-Host "[OK] MONGODB_API_KEY secret set" -ForegroundColor Green
         }
     }
-    
+
     # JWT Secret
     Write-Info "Setting JWT_SECRET secret..."
     $tempJwtParams = Join-Path $env:TEMP "jwt_secret.txt"
     [IO.File]::WriteAllText($tempJwtParams, $JWT_SECRET)
     $secretResult2 = cmd.exe /c "wrangler secret put JWT_SECRET < ""$tempJwtParams""" 2>&1
     Remove-Item $tempJwtParams -ErrorAction SilentlyContinue
-    
-    # Check if secret was actually set (ignore warnings)
     if ($secretResult2 -match "error|failed" -and $secretResult2 -notmatch "Created|Updated") {
         Write-ErrorMsg "Failed to set JWT_SECRET secret"
         Write-Host $secretResult2
         exit 1
     }
     Write-Host "[OK] JWT_SECRET secret set" -ForegroundColor Green
-    
-    # EmailJS Public Key
+
     if (-not [string]::IsNullOrWhiteSpace($EMAILJS_PUBLIC_KEY)) {
         Write-Info "Setting EMAILJS_PUBLIC_KEY secret..."
         $tempEmailJSPublicKey = Join-Path $env:TEMP "emailjs_public_key.txt"
@@ -641,15 +580,13 @@ JWT_SECRET="$JWT_SECRET"
         Remove-Item $tempEmailJSPublicKey -ErrorAction SilentlyContinue
         if ($secretResult3 -match "error|failed" -and $secretResult3 -notmatch "Created|Updated") {
             Write-ErrorMsg "Failed to set EMAILJS_PUBLIC_KEY secret"
-            Write-Host $secretResult3 -ForegroundColor Gray
         } else {
             Write-Host "[OK] EMAILJS_PUBLIC_KEY secret set" -ForegroundColor Green
         }
     } else {
         Write-Host "[SKIP] EMAILJS_PUBLIC_KEY not configured (skipping)" -ForegroundColor Gray
     }
-    
-    # EmailJS Service ID
+
     if (-not [string]::IsNullOrWhiteSpace($EMAILJS_SERVICE_ID)) {
         Write-Info "Setting EMAILJS_SERVICE_ID secret..."
         $tempEmailJSServiceId = Join-Path $env:TEMP "emailjs_service_id.txt"
@@ -658,15 +595,13 @@ JWT_SECRET="$JWT_SECRET"
         Remove-Item $tempEmailJSServiceId -ErrorAction SilentlyContinue
         if ($secretResult4 -match "error|failed" -and $secretResult4 -notmatch "Created|Updated") {
             Write-ErrorMsg "Failed to set EMAILJS_SERVICE_ID secret"
-            Write-Host $secretResult4 -ForegroundColor Gray
         } else {
             Write-Host "[OK] EMAILJS_SERVICE_ID secret set" -ForegroundColor Green
         }
     } else {
         Write-Host "[SKIP] EMAILJS_SERVICE_ID not configured (skipping)" -ForegroundColor Gray
     }
-    
-    # EmailJS Template ID
+
     if (-not [string]::IsNullOrWhiteSpace($EMAILJS_TEMPLATE_ID)) {
         Write-Info "Setting EMAILJS_TEMPLATE_ID secret..."
         $tempEmailJSTemplateId = Join-Path $env:TEMP "emailjs_template_id.txt"
@@ -675,15 +610,13 @@ JWT_SECRET="$JWT_SECRET"
         Remove-Item $tempEmailJSTemplateId -ErrorAction SilentlyContinue
         if ($secretResult5 -match "error|failed" -and $secretResult5 -notmatch "Created|Updated") {
             Write-ErrorMsg "Failed to set EMAILJS_TEMPLATE_ID secret"
-            Write-Host $secretResult5 -ForegroundColor Gray
         } else {
             Write-Host "[OK] EMAILJS_TEMPLATE_ID secret set" -ForegroundColor Green
         }
     } else {
         Write-Host "[SKIP] EMAILJS_TEMPLATE_ID not configured (skipping)" -ForegroundColor Gray
     }
-    
-    # EmailJS Private Key
+
     if (-not [string]::IsNullOrWhiteSpace($EMAILJS_PRIVATE_KEY)) {
         Write-Info "Setting EMAILJS_PRIVATE_KEY secret..."
         $tempEmailJSPrivateKey = Join-Path $env:TEMP "emailjs_private_key.txt"
@@ -692,15 +625,13 @@ JWT_SECRET="$JWT_SECRET"
         Remove-Item $tempEmailJSPrivateKey -ErrorAction SilentlyContinue
         if ($secretResult6 -match "error|failed" -and $secretResult6 -notmatch "Created|Updated") {
             Write-ErrorMsg "Failed to set EMAILJS_PRIVATE_KEY secret"
-            Write-Host $secretResult6 -ForegroundColor Gray
         } else {
             Write-Host "[OK] EMAILJS_PRIVATE_KEY secret set" -ForegroundColor Green
         }
     } else {
         Write-Host "[SKIP] EMAILJS_PRIVATE_KEY not configured (skipping)" -ForegroundColor Gray
     }
-    
-    # Summary for EmailJS
+
     if ($hasEmailJS) {
         Write-Host ""
         Write-Success "All EmailJS secrets have been installed to Cloudflare Workers"
@@ -710,60 +641,42 @@ JWT_SECRET="$JWT_SECRET"
         Write-WarningMsg "EmailJS not configured - verification links will be logged to Cloudflare Workers logs"
         Write-Info "To enable EmailJS, run deployment script again and configure EmailJS"
     }
-    
-    # Deploy with Wrangler (ignore warnings, only check for real errors)
+
     Write-Info "Deploying Cloudflare Worker..."
     $prevErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     $deployOutput = wrangler deploy 2>&1 | Out-String
     $ErrorActionPreference = $prevErrorActionPreference
     Write-Host $deployOutput
-    
-    # Check for workers.dev subdomain registration error
+
     if ($deployOutput -match "register a workers\.dev subdomain") {
         Write-Host ""
-        Write-Host "================================================================================" -ForegroundColor Red
         Write-Host "ERROR: Workers.dev Subdomain Not Registered!" -ForegroundColor Red
-        Write-Host "================================================================================" -ForegroundColor Red
-        Write-Host ""
-        Write-Host "You need to register a workers.dev subdomain ONCE before deploying." -ForegroundColor Yellow
         Write-Host ""
         Write-Host "Steps:" -ForegroundColor Cyan
-        Write-Host "1. Open this link in your browser:" -ForegroundColor White
-        Write-Host "   https://dash.cloudflare.com/70d3983867be1dd89a1d96751805e765/workers/onboarding" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "2. Choose a subdomain name (e.g., myapp.workers.dev)" -ForegroundColor White
-        Write-Host ""
-        Write-Host "3. Click 'Register'" -ForegroundColor White
-        Write-Host ""
-        Write-Host "4. Run this script again" -ForegroundColor White
-        Write-Host ""
-        Write-Host "This is a ONE-TIME step for your Cloudflare account." -ForegroundColor Yellow
-        Write-Host "================================================================================" -ForegroundColor Red
+        Write-Host "1. Open: https://dash.cloudflare.com" -ForegroundColor White
+        Write-Host "2. Go to Workers -> Onboarding and register a subdomain" -ForegroundColor White
+        Write-Host "3. Run this script again" -ForegroundColor White
         exit 1
     }
-    
-    # Check for deployment errors (ignore warnings)
+
     if ($deployOutput -match "error|failed|Error:" -and $deployOutput -notmatch "Deployed|Uploaded") {
         Write-ErrorMsg "Deployment failed!"
-        Write-Host $deployOutput
         exit 1
     }
-    
-    # Extract Worker URL from deploy output
+
     if ($deployOutput -match "https://[a-zA-Z0-9.-]+\.workers\.dev") {
         $script:API_URL = $Matches[0]
         Write-Success "Backend deployed successfully"
         Write-Info "Worker URL: $API_URL"
     } else {
-        $script:API_URL = "https://open-lance-backend.<your-subdomain>.workers.dev"
+        $script:API_URL = "https://open-lance-backend.your-subdomain.workers.dev"
         Write-Success "Backend deployment completed"
         Write-WarningMsg "Could not automatically detect Worker URL"
-        Write-WarningMsg "Please check Cloudflare dashboard: https://dash.cloudflare.com/"
         Write-Info "Expected URL format: $API_URL"
     }
-    
-    # Save API_URL in both active section and PROD_ profile — rebuild .env cleanly
+
+    # Save API_URL to .env
     $configFile = Join-Path $ProjectRoot ".env"
     $rebuildConfig = @{}
     if (Test-Path $configFile) {
@@ -790,7 +703,7 @@ JWT_SECRET="$JWT_SECRET"
     }
     $configContent | Out-File -FilePath $configFile -Encoding UTF8
     Write-Success "PROD_API_URL saved to .env: $API_URL"
-    
+
     Set-Location $ProjectRoot
     return $true
 }
@@ -801,44 +714,31 @@ JWT_SECRET="$JWT_SECRET"
 
 function Set-FrontendConfig {
     Write-Header "Configuring Frontend"
-    
+
     Write-Info "Updating frontend configuration..."
-    
+
     $configContent = @"
 // Configuration for Open-Lance v3.0 (Cloudflare Workers + MongoDB Atlas)
 const CONFIG = {
-    // Environment
     ENV: '$Environment',
-    
-    // API Endpoints
     API: {
-        development: {
-            baseURL: '$API_URL'
-        },
-        production: {
-            baseURL: '$API_URL'
-        }
+        development: { baseURL: '$API_URL' },
+        production: { baseURL: '$API_URL' }
     },
-    
-    // App Settings
     SETTINGS: {
         maxContactLinks: 10,
         defaultPageSize: 20,
         retryAttempts: 3,
-        retryDelay: 1000 // ms
+        retryDelay: 1000
     }
 };
 
-// Get current environment config
 function getConfig() {
     const env = CONFIG.ENV || 'development';
-    
-    // Choose fallback based on environment
     let fallbackURL = '$API_URL';
     if (env === 'local' || env === 'development') {
         fallbackURL = 'http://127.0.0.1:8787';
     }
-    
     const apiConfig = CONFIG.API[env] || { baseURL: fallbackURL };
     return {
         apiBaseURL: apiConfig.baseURL,
@@ -846,13 +746,12 @@ function getConfig() {
     };
 }
 
-// Export for use in other modules
 window.APP_CONFIG = getConfig();
 "@
-    
+
     $configPath = Join-Path $ProjectRoot "docs\js\config.js"
     $configContent | Out-File -FilePath $configPath -Encoding UTF8
-    
+
     Write-Success "Frontend configured successfully"
 }
 
@@ -862,18 +761,14 @@ window.APP_CONFIG = getConfig();
 
 function Test-Deployment {
     Write-Header "Testing Deployment"
-    
+
     Write-Info "Testing backend health..."
-    
-    # Make sure we're testing the correct URL base
+
     $TestingUrl = if ($Environment -eq "local") { "http://127.0.0.1:8787" } else { $API_URL }
-    
+
     try {
-        $testData = @{
-            email = "test@example.com"
-            password = "TestPass123!"
-        } | ConvertTo-Json
-        
+        $testData = @{ email = "test@example.com"; password = "TestPass123!" } | ConvertTo-Json
+
         if ($Environment -eq "local") {
             Write-WarningMsg "Skipping automated API request test for local environment because server might not be running yet."
         } else {
@@ -883,7 +778,7 @@ function Test-Deployment {
                 -Body $testData `
                 -UseBasicParsing `
                 -ErrorAction SilentlyContinue
-            
+
             if ($response.StatusCode -eq 201 -or $response.StatusCode -eq 400) {
                 Write-Success "Backend is responding correctly"
                 Write-Info "Test registration: HTTP $($response.StatusCode)"
@@ -901,7 +796,7 @@ function Test-Deployment {
 
 function Write-Summary {
     Write-Header "Deployment Summary"
-    
+
     Write-Host ""
     Write-Host "Environment:          $Environment"
     if ($Environment -eq "local") {
@@ -915,9 +810,9 @@ function Write-Summary {
     Write-Host "Worker URL:           $API_URL"
     Write-Host "Frontend URL:         $FRONTEND_URL"
     Write-Host ""
-    
+
     Write-Header "Next Steps"
-    
+
     Write-Host ""
     Write-Host "1. Test backend:" -ForegroundColor Cyan
     Write-Host "   Test the API endpoint at: $API_URL/auth/register" -ForegroundColor Gray
@@ -941,7 +836,7 @@ function Write-Summary {
     Write-Host "   Workers Logs: wrangler tail" -ForegroundColor Gray
     Write-Host "   MongoDB Atlas: Cluster -> Metrics" -ForegroundColor Gray
     Write-Host ""
-    
+
     Write-Success "Deployment completed successfully!"
     Write-Info "For more information, see:"
     Write-Host "  - MONGODB_ATLAS_SETUP.md" -ForegroundColor Gray
@@ -954,7 +849,7 @@ function Write-Summary {
 
 function Main {
     Write-Header "Open-Lance Deployment Script v3.0"
-    
+
     Write-Host "`nThis script will deploy Open-Lance with Cloudflare Workers + MongoDB Atlas`n"
     Write-Host "Changes in v3.0:" -ForegroundColor Cyan
     Write-Host "  + Cloudflare Workers (Edge computing, global)" -ForegroundColor Green
@@ -963,17 +858,15 @@ function Main {
     Write-Host "  + Simpler deployment" -ForegroundColor Green
     Write-Host ""
     $continue = Read-Host "Continue? (y/n)"
-    
+
     if ($continue -ne "y") {
         Write-Info "Deployment cancelled"
         exit 0
     }
-    
-    # Run deployment steps
+
     Test-Prerequisites
     Get-DeploymentConfig
-    
-    # Deploy backend
+
     if (-not $SkipBackend) {
         $backendSuccess = Deploy-Backend
         if (-not $backendSuccess) {
@@ -981,17 +874,11 @@ function Main {
             exit 1
         }
     }
-    
-    # Configure frontend
+
     Set-FrontendConfig
-    
-    # Test deployment
     Test-Deployment
-    
-    # Print summary
     Write-Summary
 }
 
 # Run main function
 Main
-

@@ -258,10 +258,27 @@ async function deleteApplication(event) {
 
         console.log('[deleteApplication] User ID:', userId, 'Application ID:', applicationId);
 
-        // Get application
-        const application = await mongoManager.findOne('applications', {
+        // 1. Try to find in the dedicated applications collection
+        let application = await mongoManager.findOne('applications', {
             application_id: applicationId
         });
+
+        // 2. Fallback: search in task.applications embedded array
+        if (!application) {
+            console.log('[deleteApplication] Not found in applications collection, searching in tasks...');
+            const taskWithApp = await mongoManager.findOne('tasks', {
+                'applications.application_id': applicationId
+            });
+
+            if (taskWithApp) {
+                const embedded = (taskWithApp.applications || []).find(
+                    a => a.application_id === applicationId
+                );
+                if (embedded) {
+                    application = { ...embedded, task_id: taskWithApp.task_id };
+                }
+            }
+        }
 
         if (!application) {
             return response.notFound('Application not found');
@@ -281,17 +298,16 @@ async function deleteApplication(event) {
             return response.badRequest('Cannot withdraw an accepted application from a matched/closed task');
         }
 
-        // Delete from applications collection
+        // Delete from applications collection (may already be absent)
         await mongoManager.deleteOne('applications', {
             application_id: applicationId
         });
 
-        // Remove from task applications array
+        // Remove from task applications embedded array
         await mongoManager.updateOne(
             'tasks',
             { task_id: application.task_id },
             {
-                // Pull removes the array item entirely where application_id matches
                 $pull: {
                     applications: { application_id: applicationId }
                 }
@@ -306,6 +322,7 @@ async function deleteApplication(event) {
         return response.serverError('Failed to withdraw application', error.message);
     }
 }
+
 
 module.exports = {
     getMyApplications,

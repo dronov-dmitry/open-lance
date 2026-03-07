@@ -47,9 +47,12 @@ $EnvPath = Join-Path $ProjectRoot ".env"
 $isLocalEnvironment = $false
 if (Test-Path $EnvPath) {
     $EnvContent = Get-Content $EnvPath -Raw
-    if ($EnvContent -match 'Environment="local"') {
+    if ($EnvContent -match '(?m)^Environment="?local"?') {
         $isLocalEnvironment = $true
         Write-Host "   [INFO] Detected Environment=`"local`" in .env - Skipping Cloudflare deployment checks" -ForegroundColor Cyan
+    } elseif ($EnvContent -match '(?m)^Environment="?PROD"?') {
+        $isLocalEnvironment = $false
+        Write-Host "   [INFO] Detected Environment=`"PROD`" in .env - Running full Cloudflare checks" -ForegroundColor Cyan
     }
 }
 
@@ -738,10 +741,10 @@ if ($allOk -and -not $loginHasIssue) {
 } else {
     if ($isLocalEnvironment) {
         Write-Host "`n[OK] Tested local environment constraints. Skipping Cloudflare-specific tools." -ForegroundColor Green
-        Write-Host "`nYou are ready to deploy locally!" -ForegroundColor Green
+        Write-Host "`nYou are ready to run locally!" -ForegroundColor Green
         Write-Host ""
         Write-Host "Next steps:" -ForegroundColor Cyan
-        Write-Host "  1. Start local servers: .\scripts\start_dev.ps1" -ForegroundColor Gray
+        Write-Host "  1. Start local servers: .\scripts\start_dev.ps1 -Local" -ForegroundColor Gray
         Write-Host "  2. Open http://localhost:8080" -ForegroundColor Gray
         Write-Host ""
     } else {
