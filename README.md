@@ -6,6 +6,13 @@
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020)](https://workers.cloudflare.com/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248)](https://www.mongodb.com/atlas)
 
+## 🌐 Тестовая страница
+
+**Живая демо-версия доступна по адресу:**  
+👉 **[https://dronov-dmitry.github.io/open-lance](https://dronov-dmitry.github.io/open-lance)**
+
+Вы можете протестировать все функции платформы прямо сейчас!
+
 ## 🎯 О проекте
 
 Open-Lance - это современная P2P платформа для фриланса, где каждый пользователь может быть одновременно заказчиком и исполнителем.
