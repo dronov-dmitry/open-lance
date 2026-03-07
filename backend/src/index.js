@@ -65,6 +65,16 @@ async function getRequestBody(request) {
  * Route handler
  */
 async function handleRequest(request, env) {
+    // Debug: Log env keys to see what secrets are available
+    if (env) {
+        console.log('[Backend] env keys:', Object.keys(env).join(', '));
+        console.log('[Backend] env has EMAILJS_PUBLIC_KEY:', 'EMAILJS_PUBLIC_KEY' in env);
+        console.log('[Backend] env has EMAILJS_SERVICE_ID:', 'EMAILJS_SERVICE_ID' in env);
+        console.log('[Backend] env has EMAILJS_TEMPLATE_ID:', 'EMAILJS_TEMPLATE_ID' in env);
+    } else {
+        console.error('[Backend] env is null or undefined!');
+    }
+    
     const url = new URL(request.url);
     // Normalize path - remove trailing slash
     let path = url.pathname;
@@ -73,15 +83,6 @@ async function handleRequest(request, env) {
     }
     const method = request.method;
 
-    // Debug logging for resend-verification
-    if (path.includes('resend-verification')) {
-        console.log('[Backend] Resend verification request detected:', { 
-            originalPath: url.pathname, 
-            normalizedPath: path, 
-            method, 
-            url: request.url 
-        });
-    }
 
     // Handle CORS preflight
     if (method === 'OPTIONS') {
@@ -110,12 +111,48 @@ async function handleRequest(request, env) {
 
     try {
         // Initialize MongoDB connection
-        await mongoManager.connect(env);
+        try {
+            await mongoManager.connect(env);
+            console.log('[Backend] MongoDB connection established');
+        } catch (mongoError) {
+            console.error('[Backend] MongoDB connection error:', mongoError);
+            console.error('[Backend] MongoDB error details:', {
+                message: mongoError.message,
+                name: mongoError.name,
+                stack: mongoError.stack
+            });
+            
+            // For health check, don't fail
+            if (path === '/health' && method === 'GET') {
+                // Health check already handled above, but if we get here, return error
+            } else {
+                return addCorsHeaders(new Response(JSON.stringify({
+                    error: 'Database connection failed',
+                    message: mongoError.message,
+                    details: 'Please check MongoDB URI and network access'
+                }), {
+                    status: 503,
+                    headers: { 'Content-Type': 'application/json' }
+                }));
+            }
+        }
 
         // Parse body for POST/PUT/PATCH requests
         let body = null;
         if (['POST', 'PUT', 'PATCH'].includes(method)) {
-            body = await getRequestBody(request);
+            try {
+                body = await getRequestBody(request);
+                console.log('[Backend] Body parsed successfully:', body ? 'yes' : 'no');
+            } catch (bodyError) {
+                console.error('[Backend] Error parsing request body:', bodyError);
+                return addCorsHeaders(new Response(JSON.stringify({
+                    error: 'Invalid request body',
+                    message: bodyError.message
+                }), {
+                    status: 400,
+                    headers: { 'Content-Type': 'application/json' }
+                }));
+            }
         }
 
         // Create event object similar to AWS Lambda format for compatibility
@@ -166,7 +203,7 @@ async function handleRequest(request, env) {
             console.log('[Backend] Processing resend-verification request');
             console.log('[Backend] Event body:', event.body);
             const result = await authHandlers.resendVerificationEmail(event);
-            console.log('[Backend] Resend verification result:', result.statusCode);
+            console.log('[Backend] Verification email resend result:', result.statusCode);
             return addCorsHeaders(new Response(result.body, {
                 status: result.statusCode,
                 headers: { 'Content-Type': 'application/json' }

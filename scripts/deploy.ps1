@@ -230,13 +230,16 @@ function Get-DeploymentConfig {
             $script:Environment = "dev"
         }
         
-        $script:MONGODB_URI = $envVars['MONGODB_URI']
-        $script:MONGODB_DATABASE = $envVars['MONGODB_DATABASE']
-        $script:FRONTEND_URL = $envVars['FRONTEND_URL']
-        $script:JWT_SECRET = $envVars['JWT_SECRET']
-        $script:API_URL = $envVars['API_URL']
-        $script:RESEND_API_KEY = $envVars['RESEND_API_KEY']
-        $script:SENDER_EMAIL = $envVars['SENDER_EMAIL']
+        $script:MONGODB_URI = if ($envVars.ContainsKey('MONGODB_URI')) { $envVars['MONGODB_URI'] } else { $null }
+        $script:MONGODB_DATABASE = if ($envVars.ContainsKey('MONGODB_DATABASE')) { $envVars['MONGODB_DATABASE'] } else { $null }
+        $script:FRONTEND_URL = if ($envVars.ContainsKey('FRONTEND_URL')) { $envVars['FRONTEND_URL'] } else { $null }
+        $script:JWT_SECRET = if ($envVars.ContainsKey('JWT_SECRET')) { $envVars['JWT_SECRET'] } else { $null }
+        $script:API_URL = if ($envVars.ContainsKey('API_URL')) { $envVars['API_URL'] } else { $null }
+        $script:MONGODB_API_KEY = if ($envVars.ContainsKey('MONGODB_API_KEY')) { $envVars['MONGODB_API_KEY'] } else { $null }
+        $script:EMAILJS_PUBLIC_KEY = if ($envVars.ContainsKey('EMAILJS_PUBLIC_KEY')) { $envVars['EMAILJS_PUBLIC_KEY'] } else { $null }
+        $script:EMAILJS_SERVICE_ID = if ($envVars.ContainsKey('EMAILJS_SERVICE_ID')) { $envVars['EMAILJS_SERVICE_ID'] } else { $null }
+        $script:EMAILJS_TEMPLATE_ID = if ($envVars.ContainsKey('EMAILJS_TEMPLATE_ID')) { $envVars['EMAILJS_TEMPLATE_ID'] } else { $null }
+        $script:EMAILJS_PRIVATE_KEY = if ($envVars.ContainsKey('EMAILJS_PRIVATE_KEY')) { $envVars['EMAILJS_PRIVATE_KEY'] } else { $null }
         
         if ($envChoice -eq "1") {
             # For local testing, silently use existing config (to generate .dev.vars)
@@ -245,14 +248,38 @@ function Get-DeploymentConfig {
             # Keep existing config but update the Environment variable in .env
             $updatedEnvContent = $envContent -replace 'Environment=["\u0027]?dev["\u0027]?', 'Environment="local"'
             $updatedEnvContent | Out-File -FilePath $configFile -Encoding UTF8
+            return
         } else {
             $useExisting = Read-Host "Use existing configuration? (y/n)"
             if ($useExisting -ne "y") {
+                # Clear all loaded variables so the script actually prompts for them
+                $script:MONGODB_URI = $null
+                $script:MONGODB_DATABASE = $null
+                $script:FRONTEND_URL = $null
+                $script:JWT_SECRET = $null
+                $script:API_URL = $null
+                $script:MONGODB_API_KEY = $null
+                $script:EMAILJS_PUBLIC_KEY = $null
+                $script:EMAILJS_SERVICE_ID = $null
+                $script:EMAILJS_TEMPLATE_ID = $null
+                $script:EMAILJS_PRIVATE_KEY = $null
                 Set-DeploymentConfig
             } else {
                 # Keep existing config but update the Environment variable in .env
                 $updatedEnvContent = $envContent -replace 'Environment=["\u0027]?local["\u0027]?', 'Environment="dev"'
                 $updatedEnvContent | Out-File -FilePath $configFile -Encoding UTF8
+                
+                # Check and report EmailJS configuration status
+                Write-Host ""
+                if (-not [string]::IsNullOrWhiteSpace($script:EMAILJS_PUBLIC_KEY) -and 
+                    -not [string]::IsNullOrWhiteSpace($script:EMAILJS_SERVICE_ID) -and 
+                    -not [string]::IsNullOrWhiteSpace($script:EMAILJS_TEMPLATE_ID) -and 
+                    -not [string]::IsNullOrWhiteSpace($script:EMAILJS_PRIVATE_KEY)) {
+                    Write-Success "EmailJS configuration found in .env - will be installed to Cloudflare Workers"
+                } else {
+                    Write-WarningMsg "EmailJS not fully configured in .env - emails will use fallback mode (links in logs)"
+                }
+                return
             }
         }
     }
@@ -267,7 +294,7 @@ function Set-DeploymentConfig {
     # MongoDB Atlas
     Write-Host ""
     Write-Host "MongoDB Atlas Configuration Required!" -ForegroundColor Yellow
-    Write-Host "If you haven't set up MongoDB Atlas yet, see: MONGODB_ATLAS_SETUP.md" -ForegroundColor Gray
+    Write-Host "If you haven't set up MongoDB Atlas yet, see: DEPLOYMENT.md" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Example Connection URI format:" -ForegroundColor Cyan
     Write-Host "  mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/" -ForegroundColor Gray
@@ -288,6 +315,9 @@ function Set-DeploymentConfig {
         }
     } while ([string]::IsNullOrWhiteSpace($MONGODB_URI))
     
+    $script:MONGODB_API_KEY = ""
+    Write-Host "[OK] Using Direct MongoDB Connection" -ForegroundColor Green
+    
     $dbInput = Read-Host "MongoDB Database Name [open-lance]"
     if ([string]::IsNullOrWhiteSpace($dbInput)) {
         $script:MONGODB_DATABASE = "open-lance"
@@ -301,85 +331,76 @@ function Set-DeploymentConfig {
         $script:FRONTEND_URL = "*"
     }
     
-    # Resend Email Configuration
+    # EmailJS Configuration
     Write-Host ""
-    Write-Host "Email Verification Setup (Resend)" -ForegroundColor Yellow
-    Write-Host "Cloudflare Workers requires an external API to send emails." -ForegroundColor Gray
-    Write-Host "If you don't have a Resend key, emails will only be simulated (printed to console)." -ForegroundColor Gray
+    Write-Host "Email Verification Setup (EmailJS)" -ForegroundColor Yellow
+    Write-Host "EmailJS is a free service for sending emails without SMTP setup." -ForegroundColor Gray
+    Write-Host "Free tier: 200 emails/month. No domain required." -ForegroundColor Gray
     Write-Host ""
-    Write-Host "Resend Setup Options:" -ForegroundColor Cyan
-    Write-Host "  1. For TESTING (✅ fully free, no domain):" -ForegroundColor Green
-    Write-Host "     - Use: onboarding@resend.dev" -ForegroundColor Gray
-    Write-Host "     - No domain verification required" -ForegroundColor Gray
-    Write-Host "     - Works immediately after getting API key" -ForegroundColor Gray
-    Write-Host "     - ✅ Can send to your email and test addresses @resend.dev" -ForegroundColor Green
-    Write-Host "     - Test addresses: delivered@resend.dev, bounced@resend.dev, etc." -ForegroundColor Gray
+    Write-Host "Setup steps:" -ForegroundColor Cyan
+    Write-Host "  1. Register at https://www.emailjs.com/" -ForegroundColor Gray
+    Write-Host "  2. Add Email Service (Gmail, Outlook, etc.)" -ForegroundColor Gray
+    Write-Host "     Service ID is the identifier of the email account you connected to EmailJS" -ForegroundColor Gray
+    Write-Host "     (e.g., your Gmail or Yandex). It tells the service which account to use for sending." -ForegroundColor Gray
+    Write-Host "     To find Service ID:" -ForegroundColor Gray
+    Write-Host "     - Go to your EmailJS account" -ForegroundColor Gray
+    Write-Host "     - In the left sidebar, select the first item - 'Email Services'" -ForegroundColor Gray
+    Write-Host "     - You'll see a card of your connected email service (e.g., with Gmail logo)" -ForegroundColor Gray
+    Write-Host "     - In this card, right under the name (e.g., 'Gmail'), you'll see 'Service ID'" -ForegroundColor Gray
+    Write-Host "     - It usually looks like 'service_xxxxxxx'" -ForegroundColor Gray
+    Write-Host "     - Click the copy icon next to this ID" -ForegroundColor Gray
+    Write-Host "  3. Create Email Template (use emailjs_template.html as reference)" -ForegroundColor Gray
+    Write-Host "     Template ID is the unique identifier of the specific email template you created." -ForegroundColor Gray
+    Write-Host "     It tells the service which design and variables (like {{verification_link}}) to use." -ForegroundColor Gray
+    Write-Host "     To find Template ID:" -ForegroundColor Gray
+    Write-Host "     - Go to your EmailJS account" -ForegroundColor Gray
+    Write-Host "     - In the left sidebar, select 'Email Templates' (icon with paper sheet)" -ForegroundColor Gray
+    Write-Host "     - You'll see a list of your templates. Find the one created for email verification" -ForegroundColor Gray
+    Write-Host "     - Right under the template name (e.g., 'My Default Template'), you'll see 'ID'" -ForegroundColor Gray
+    Write-Host "     - It usually looks like 'template_xxxxxxx'" -ForegroundColor Gray
+    Write-Host "     - Click the copy icon next to this ID" -ForegroundColor Gray
+    Write-Host "  4. Get Public Key:" -ForegroundColor Gray
+    Write-Host "     - Go to your EmailJS dashboard" -ForegroundColor Gray
+    Write-Host "     - Click on 'Account' in the left sidebar (bottom icon/tab)" -ForegroundColor Gray
+    Write-Host "     - On the opened page, you'll see 'API Keys' section" -ForegroundColor Gray
+    Write-Host "     - In 'Public Key' field you'll see a random string (usually starts with 'user_' or just letters)" -ForegroundColor Gray
+    Write-Host "     - Click the 'Copy' icon next to the key" -ForegroundColor Gray
+    Write-Host "  5. Get Private Key:" -ForegroundColor Gray
+    Write-Host "     - In the same 'API Keys' section next to 'Public Key', you'll see 'Private Key'" -ForegroundColor Gray
+    Write-Host "     - If it's empty, click 'Regenerate' and copy the resulting string" -ForegroundColor Gray
+    Write-Host "     - Note: This is mandatory if API access from non-browser environments is strictly enabled" -ForegroundColor Gray
     Write-Host ""
-    Write-Host "  2. For PRODUCTION (with custom domain):" -ForegroundColor Gray
-    Write-Host "     - Need to verify your domain in Resend Dashboard" -ForegroundColor Gray
-    Write-Host "     - Steps:" -ForegroundColor Yellow
-    Write-Host "       1. Go to https://resend.com/domains" -ForegroundColor Gray
-    Write-Host "       2. Click 'Add Domain'" -ForegroundColor Gray
-    Write-Host "       3. Enter your domain (e.g., example.com)" -ForegroundColor Gray
-    Write-Host "       4. Add DNS records (DKIM, SPF) to your domain" -ForegroundColor Gray
-    Write-Host "       5. Wait for verification (usually 5-10 minutes)" -ForegroundColor Gray
-    Write-Host "       6. Use: noreply@yourdomain.com" -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "  3. For GitHub Pages (✅ fully free):" -ForegroundColor Green
-    Write-Host "     - ⚠️  GitHub Pages subdomains (username.github.io) CANNOT be verified!" -ForegroundColor Yellow
-    Write-Host "     - Option A: onboarding@resend.dev (only your email + test @resend.dev)" -ForegroundColor Gray
-    Write-Host "     - Option B: WITHOUT Resend - links in Cloudflare Workers logs" -ForegroundColor Gray
-    Write-Host "     - For production: buy a cheap domain (from $0.99/year)" -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "  4. Fully free WITHOUT email service:" -ForegroundColor Green
-    Write-Host "     - Leave Resend API Key empty" -ForegroundColor Gray
-    Write-Host "     - Verification links will be in Cloudflare Workers logs" -ForegroundColor Gray
-    Write-Host "     - Copy links from logs and send to users manually" -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "Get API Key: https://resend.com/api-keys" -ForegroundColor Cyan
+    Write-Host "You can skip EmailJS setup (leave empty) to use fallback mode (links in logs)" -ForegroundColor Yellow
     Write-Host ""
     
-    $script:RESEND_API_KEY = Read-Host "Resend API Key (re_...) [Leave empty to simulate]"
-    if (-not [string]::IsNullOrWhiteSpace($script:RESEND_API_KEY)) {
-        Write-Host ""
-        Write-Host "Sender Email Options:" -ForegroundColor Cyan
-        Write-Host "  - onboarding@resend.dev (⚠️  RESTRICTION: can send ONLY to Resend account owner's email!)" -ForegroundColor Yellow
-        Write-Host "  - your-email@yourdomain.com (for production, requires domain verification)" -ForegroundColor Gray
-        Write-Host ""
-        Write-Host "⚠️  IMPORTANT: onboarding@resend.dev works for testing only!" -ForegroundColor Yellow
-        Write-Host "   To send to any email address, you must verify your domain." -ForegroundColor Yellow
-        Write-Host ""
-        $script:SENDER_EMAIL = Read-Host "Sender Email [onboarding@resend.dev]"
-        if ([string]::IsNullOrWhiteSpace($script:SENDER_EMAIL)) {
-            $script:SENDER_EMAIL = "onboarding@resend.dev"
-            Write-Host "Using default: onboarding@resend.dev (⚠️  Resend account owner's email only!)" -ForegroundColor Yellow
+    $script:EMAILJS_PUBLIC_KEY = Read-Host "EmailJS Public Key (leave empty to skip)"
+    if (-not [string]::IsNullOrWhiteSpace($script:EMAILJS_PUBLIC_KEY)) {
+        $script:EMAILJS_SERVICE_ID = Read-Host "EmailJS Service ID"
+        if ([string]::IsNullOrWhiteSpace($script:EMAILJS_SERVICE_ID)) {
+            Write-Host "[WARN] Service ID is empty, EmailJS will not work" -ForegroundColor Yellow
+            $script:EMAILJS_PUBLIC_KEY = ""
+            $script:EMAILJS_SERVICE_ID = ""
+            $script:EMAILJS_TEMPLATE_ID = ""
+            $script:EMAILJS_PRIVATE_KEY = ""
         } else {
-            # Check if using custom domain
-            if ($script:SENDER_EMAIL -notmatch "@resend\.dev$") {
-                Write-Host ""
-                Write-Host "⚠️  Custom domain detected: $script:SENDER_EMAIL" -ForegroundColor Yellow
-                Write-Host "Make sure you have:" -ForegroundColor Yellow
-                Write-Host "  1. Added and verified your domain in Resend Dashboard" -ForegroundColor Gray
-                Write-Host "     https://resend.com/domains" -ForegroundColor Gray
-                Write-Host "  2. Added DNS records (DKIM, SPF) to your domain" -ForegroundColor Gray
-                Write-Host "  3. Domain status is 'Verified' in Resend Dashboard" -ForegroundColor Gray
-                Write-Host ""
-                $confirmDomain = Read-Host "Is your domain verified in Resend? (y/n)"
-                if ($confirmDomain -ne "y") {
-                    Write-Host "⚠️  Warning: Using unverified domain may cause 403 errors!" -ForegroundColor Red
-                    Write-Host "   Consider using onboarding@resend.dev for testing first." -ForegroundColor Yellow
-                    Write-Host ""
-                    $useDefault = Read-Host "Use onboarding@resend.dev instead? (y/n)"
-                    if ($useDefault -eq "y") {
-                        $script:SENDER_EMAIL = "onboarding@resend.dev"
-                        Write-Host "Changed to: onboarding@resend.dev" -ForegroundColor Green
-                    }
-                }
+            $script:EMAILJS_TEMPLATE_ID = Read-Host "EmailJS Template ID"
+            if ([string]::IsNullOrWhiteSpace($script:EMAILJS_TEMPLATE_ID)) {
+                Write-Host "[WARN] Template ID is empty, EmailJS will not work" -ForegroundColor Yellow
+                $script:EMAILJS_PUBLIC_KEY = ""
+                $script:EMAILJS_SERVICE_ID = ""
+                $script:EMAILJS_TEMPLATE_ID = ""
+                $script:EMAILJS_PRIVATE_KEY = ""
+            } else {
+                $script:EMAILJS_PRIVATE_KEY = Read-Host "EmailJS Private Key"
+                Write-Host "[OK] EmailJS configured" -ForegroundColor Green
             }
         }
     } else {
-        $script:RESEND_API_KEY = ""
-        $script:SENDER_EMAIL = ""
+        $script:EMAILJS_PUBLIC_KEY = ""
+        $script:EMAILJS_SERVICE_ID = ""
+        $script:EMAILJS_TEMPLATE_ID = ""
+        $script:EMAILJS_PRIVATE_KEY = ""
+        Write-Host "[INFO] EmailJS skipped - using fallback mode (links in logs)" -ForegroundColor Cyan
     }
     
     # Generate JWT Secret
@@ -391,11 +412,14 @@ function Set-DeploymentConfig {
 # Open-Lance Deployment Configuration v3.0 (Cloudflare Workers)
 Environment="$Environment"
 MONGODB_URI="$MONGODB_URI"
+MONGODB_API_KEY="$MONGODB_API_KEY"
 MONGODB_DATABASE="$MONGODB_DATABASE"
 FRONTEND_URL="$FRONTEND_URL"
 JWT_SECRET="$JWT_SECRET"
-RESEND_API_KEY="$RESEND_API_KEY"
-SENDER_EMAIL="$SENDER_EMAIL"
+EMAILJS_PUBLIC_KEY="$EMAILJS_PUBLIC_KEY"
+EMAILJS_SERVICE_ID="$EMAILJS_SERVICE_ID"
+EMAILJS_TEMPLATE_ID="$EMAILJS_TEMPLATE_ID"
+EMAILJS_PRIVATE_KEY="$EMAILJS_PRIVATE_KEY"
 "@
     
     $configContent | Out-File -FilePath $configFile -Encoding UTF8
@@ -457,6 +481,18 @@ JWT_SECRET="$JWT_SECRET"
     # Set Cloudflare Workers secrets
     Write-Info "Setting Cloudflare Workers secrets..."
     
+    # Check EmailJS configuration before setting secrets
+    $hasEmailJS = (-not [string]::IsNullOrWhiteSpace($EMAILJS_PUBLIC_KEY) -and 
+                    -not [string]::IsNullOrWhiteSpace($EMAILJS_SERVICE_ID) -and 
+                    -not [string]::IsNullOrWhiteSpace($EMAILJS_TEMPLATE_ID) -and
+                    -not [string]::IsNullOrWhiteSpace($EMAILJS_PRIVATE_KEY))
+    
+    if ($hasEmailJS) {
+        Write-Info "EmailJS configuration detected - will install EmailJS secrets to Cloudflare Workers"
+    } else {
+        Write-WarningMsg "EmailJS not configured - skipping EmailJS secrets (emails will use fallback mode)"
+    }
+    
     # MongoDB URI
     Write-Info "Setting MONGODB_URI secret..."
     $tempMongoParams = Join-Path $env:TEMP "mongodb_uri.txt"
@@ -471,6 +507,20 @@ JWT_SECRET="$JWT_SECRET"
         exit 1
     }
     Write-Host "[OK] MONGODB_URI secret set" -ForegroundColor Green
+    
+    # MongoDB Data API Key (if using Data API)
+    if (-not [string]::IsNullOrWhiteSpace($MONGODB_API_KEY)) {
+        Write-Info "Setting MONGODB_API_KEY secret..."
+        $tempMongoApiKey = Join-Path $env:TEMP "mongodb_api_key.txt"
+        [IO.File]::WriteAllText($tempMongoApiKey, $MONGODB_API_KEY)
+        $secretResultMongoApi = cmd.exe /c "wrangler secret put MONGODB_API_KEY < ""$tempMongoApiKey""" 2>&1
+        Remove-Item $tempMongoApiKey -ErrorAction SilentlyContinue
+        if ($secretResultMongoApi -match "error|failed" -and $secretResultMongoApi -notmatch "Created|Updated") {
+            Write-Host "[WARN] Failed to set MONGODB_API_KEY secret" -ForegroundColor Yellow
+        } else {
+            Write-Host "[OK] MONGODB_API_KEY secret set" -ForegroundColor Green
+        }
+    }
     
     # JWT Secret
     Write-Info "Setting JWT_SECRET secret..."
@@ -487,36 +537,83 @@ JWT_SECRET="$JWT_SECRET"
     }
     Write-Host "[OK] JWT_SECRET secret set" -ForegroundColor Green
     
-    # Resend API Key
-    if (-not [string]::IsNullOrWhiteSpace($RESEND_API_KEY)) {
-        Write-Info "Setting RESEND_API_KEY secret..."
-        $tempResendParams = Join-Path $env:TEMP "resend_key.txt"
-        [IO.File]::WriteAllText($tempResendParams, $RESEND_API_KEY)
-        $secretResult3 = cmd.exe /c "wrangler secret put RESEND_API_KEY < ""$tempResendParams""" 2>&1
-        Remove-Item $tempResendParams -ErrorAction SilentlyContinue
-        Write-Host "[OK] RESEND_API_KEY secret set" -ForegroundColor Green
+    # EmailJS Public Key
+    if (-not [string]::IsNullOrWhiteSpace($EMAILJS_PUBLIC_KEY)) {
+        Write-Info "Setting EMAILJS_PUBLIC_KEY secret..."
+        $tempEmailJSPublicKey = Join-Path $env:TEMP "emailjs_public_key.txt"
+        [IO.File]::WriteAllText($tempEmailJSPublicKey, $EMAILJS_PUBLIC_KEY)
+        $secretResult3 = cmd.exe /c "wrangler secret put EMAILJS_PUBLIC_KEY < ""$tempEmailJSPublicKey""" 2>&1
+        Remove-Item $tempEmailJSPublicKey -ErrorAction SilentlyContinue
+        if ($secretResult3 -match "error|failed" -and $secretResult3 -notmatch "Created|Updated") {
+            Write-ErrorMsg "Failed to set EMAILJS_PUBLIC_KEY secret"
+            Write-Host $secretResult3 -ForegroundColor Gray
+        } else {
+            Write-Host "[OK] EMAILJS_PUBLIC_KEY secret set" -ForegroundColor Green
+        }
     } else {
-        # Delete or empty secret if not used
-        $emptyParams = Join-Path $env:TEMP "empty.txt"
-        [IO.File]::WriteAllText($emptyParams, "SIMULATE")
-        cmd.exe /c "wrangler secret put RESEND_API_KEY < ""$emptyParams""" 2>&1 | Out-Null
-        Remove-Item $emptyParams -ErrorAction SilentlyContinue
+        Write-Host "[SKIP] EMAILJS_PUBLIC_KEY not configured (skipping)" -ForegroundColor Gray
     }
     
-    # Sender Email
-    if (-not [string]::IsNullOrWhiteSpace($SENDER_EMAIL)) {
-        Write-Info "Setting SENDER_EMAIL secret..."
-        $tempEmailParams = Join-Path $env:TEMP "sender_email.txt"
-        [IO.File]::WriteAllText($tempEmailParams, $SENDER_EMAIL)
-        $secretResult4 = cmd.exe /c "wrangler secret put SENDER_EMAIL < ""$tempEmailParams""" 2>&1
-        Remove-Item $tempEmailParams -ErrorAction SilentlyContinue
-        Write-Host "[OK] SENDER_EMAIL secret set" -ForegroundColor Green
+    # EmailJS Service ID
+    if (-not [string]::IsNullOrWhiteSpace($EMAILJS_SERVICE_ID)) {
+        Write-Info "Setting EMAILJS_SERVICE_ID secret..."
+        $tempEmailJSServiceId = Join-Path $env:TEMP "emailjs_service_id.txt"
+        [IO.File]::WriteAllText($tempEmailJSServiceId, $EMAILJS_SERVICE_ID)
+        $secretResult4 = cmd.exe /c "wrangler secret put EMAILJS_SERVICE_ID < ""$tempEmailJSServiceId""" 2>&1
+        Remove-Item $tempEmailJSServiceId -ErrorAction SilentlyContinue
+        if ($secretResult4 -match "error|failed" -and $secretResult4 -notmatch "Created|Updated") {
+            Write-ErrorMsg "Failed to set EMAILJS_SERVICE_ID secret"
+            Write-Host $secretResult4 -ForegroundColor Gray
+        } else {
+            Write-Host "[OK] EMAILJS_SERVICE_ID secret set" -ForegroundColor Green
+        }
     } else {
-        # Delete or empty secret if not used
-        $emptyParams = Join-Path $env:TEMP "empty.txt"
-        [IO.File]::WriteAllText($emptyParams, "SIMULATE")
-        cmd.exe /c "wrangler secret put SENDER_EMAIL < ""$emptyParams""" 2>&1 | Out-Null
-        Remove-Item $emptyParams -ErrorAction SilentlyContinue
+        Write-Host "[SKIP] EMAILJS_SERVICE_ID not configured (skipping)" -ForegroundColor Gray
+    }
+    
+    # EmailJS Template ID
+    if (-not [string]::IsNullOrWhiteSpace($EMAILJS_TEMPLATE_ID)) {
+        Write-Info "Setting EMAILJS_TEMPLATE_ID secret..."
+        $tempEmailJSTemplateId = Join-Path $env:TEMP "emailjs_template_id.txt"
+        [IO.File]::WriteAllText($tempEmailJSTemplateId, $EMAILJS_TEMPLATE_ID)
+        $secretResult5 = cmd.exe /c "wrangler secret put EMAILJS_TEMPLATE_ID < ""$tempEmailJSTemplateId""" 2>&1
+        Remove-Item $tempEmailJSTemplateId -ErrorAction SilentlyContinue
+        if ($secretResult5 -match "error|failed" -and $secretResult5 -notmatch "Created|Updated") {
+            Write-ErrorMsg "Failed to set EMAILJS_TEMPLATE_ID secret"
+            Write-Host $secretResult5 -ForegroundColor Gray
+        } else {
+            Write-Host "[OK] EMAILJS_TEMPLATE_ID secret set" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "[SKIP] EMAILJS_TEMPLATE_ID not configured (skipping)" -ForegroundColor Gray
+    }
+    
+    # EmailJS Private Key
+    if (-not [string]::IsNullOrWhiteSpace($EMAILJS_PRIVATE_KEY)) {
+        Write-Info "Setting EMAILJS_PRIVATE_KEY secret..."
+        $tempEmailJSPrivateKey = Join-Path $env:TEMP "emailjs_private_key.txt"
+        [IO.File]::WriteAllText($tempEmailJSPrivateKey, $EMAILJS_PRIVATE_KEY)
+        $secretResult6 = cmd.exe /c "wrangler secret put EMAILJS_PRIVATE_KEY < ""$tempEmailJSPrivateKey""" 2>&1
+        Remove-Item $tempEmailJSPrivateKey -ErrorAction SilentlyContinue
+        if ($secretResult6 -match "error|failed" -and $secretResult6 -notmatch "Created|Updated") {
+            Write-ErrorMsg "Failed to set EMAILJS_PRIVATE_KEY secret"
+            Write-Host $secretResult6 -ForegroundColor Gray
+        } else {
+            Write-Host "[OK] EMAILJS_PRIVATE_KEY secret set" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "[SKIP] EMAILJS_PRIVATE_KEY not configured (skipping)" -ForegroundColor Gray
+    }
+    
+    # Summary for EmailJS
+    if ($hasEmailJS) {
+        Write-Host ""
+        Write-Success "All EmailJS secrets have been installed to Cloudflare Workers"
+        Write-Info "Email verification emails will be sent via EmailJS"
+    } else {
+        Write-Host ""
+        Write-WarningMsg "EmailJS not configured - verification links will be logged to Cloudflare Workers logs"
+        Write-Info "To enable EmailJS, run deployment script again and configure EmailJS"
     }
     
     # Deploy with Wrangler (ignore warnings, only check for real errors)

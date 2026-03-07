@@ -1,0 +1,23 @@
+<div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #2c3e50; line-height: 1.5; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #f0f0f0; border-radius: 12px;">
+  
+  <div style="text-align: center; margin-bottom: 25px;">
+    <div style="font-size: 40px; margin-bottom: 10px;">🔐</div>
+    <h2 style="margin: 0; color: #1a1a1a;">Подтвердите email на Open-Lance</h2>
+    <p style="color: #7f8c8d; font-size: 14px;">Нажмите на кнопку ниже для подтверждения вашего email адреса</p>
+  </div>
+
+  <div style="background-color: #f8fbff; border: 2px dashed #d1e3ff; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
+    <a href="{{verification_link}}" style="display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">
+      Подтвердить Email
+    </a>
+    <p style="margin-top: 15px; font-size: 12px; color: #7f8c8d;">Или скопируйте ссылку ниже:</p>
+    <p style="font-size: 11px; color: #95a5a6; word-break: break-all; margin-top: 10px;">{{verification_link}}</p>
+  </div>
+
+  <div style="font-size: 13px; color: #95a5a6; text-align: center; margin-top: 25px; padding-top: 20px; border-top: 1px solid #eee;">
+    <div>Письмо отправлено для <strong>{{user_email}}</strong></div>
+    <div style="margin-top: 5px;">Если вы не запрашивали это письмо, просто удалите его.</div>
+    <div style="margin-top: 15px; font-size: 11px; color: #bdc3c7;">{{time}}</div>
+  </div>
+  
+</div>

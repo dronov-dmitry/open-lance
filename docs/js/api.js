@@ -255,7 +255,7 @@ class APIService {
         // This is a public endpoint, don't add auth token
         const timestamp = new Date().toISOString();
         const url = `${this.baseURL}/auth/resend-verification`;
-        console.log(`[${timestamp}] [API] Resend verification email request (public endpoint)`);
+        console.log(`[${timestamp}] [API] Verification email resend request`);
         console.log(`[${timestamp}] [API] URL:`, url);
         console.log(`[${timestamp}] [API] Email:`, email);
         
@@ -312,7 +312,7 @@ class APIService {
             return data;
         } catch (error) {
             clearTimeout(timeoutId);
-            console.error(`[${timestamp}] [API] Resend verification error:`, error);
+            console.error(`[${timestamp}] [API] Verification email resend error:`, error);
             if (error.name === 'AbortError') {
                 throw new Error('Запрос превысил время ожидания. Попробуйте позже.');
             }

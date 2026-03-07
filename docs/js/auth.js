@@ -148,65 +148,21 @@ window.auth = (function() {
 
                 const response = await window.api.resendVerificationEmail(currentEmailForResend);
                 
-                // Проверяем, есть ли предупреждение в ответе
-                if (response.warning) {
-                    // Проверяем, связано ли предупреждение с ограничением onboarding@resend.dev
-                    const isDomainRestriction = response.warning.toLowerCase().includes('onboarding@resend.dev') ||
-                                                response.warning.toLowerCase().includes('может отправлять только') ||
-                                                response.warning.toLowerCase().includes('владельца аккаунта');
-                    
-                    let warningMsg;
-                    if (isDomainRestriction) {
-                        warningMsg = '⚠️ ОГРАНИЧЕНИЕ: onboarding@resend.dev может отправлять письма только на email владельца Resend аккаунта.\n\n' +
-                                    'РЕШЕНИЕ:\n' +
-                                    '1. Верифицируйте свой домен в Resend Dashboard: https://resend.com/domains\n' +
-                                    '2. После верификации домена, измените SENDER_EMAIL в Cloudflare Workers на ваш-email@ваш-домен.com\n' +
-                                    '3. Обновите секрет: wrangler secret put SENDER_EMAIL\n\n' +
-                                    'ВРЕМЕННОЕ РЕШЕНИЕ:\n' +
-                                    'Ссылка для подтверждения доступна в логах Cloudflare Workers:\n' +
-                                    '1. Откройте Cloudflare Dashboard\n' +
-                                    '2. Перейдите в Workers & Pages → ваш worker\n' +
-                                    '3. Откройте вкладку "Logs"\n' +
-                                    '4. Найдите сообщение "=== УВЕДОМЛЕНИЕ (Fallback) ==="\n' +
-                                    '5. Скопируйте ссылку из логов';
-                    } else {
-                        warningMsg = '⚠️ ' + response.warning + '\n\n' +
-                                    'Чтобы получить ссылку для подтверждения:\n' +
-                                    '1. Откройте Cloudflare Dashboard\n' +
-                                    '2. Перейдите в Workers & Pages → ваш worker\n' +
-                                    '3. Откройте вкладку "Logs"\n' +
-                                    '4. Найдите сообщение "=== УВЕДОМЛЕНИЕ (Fallback) ==="\n' +
-                                    '5. Скопируйте ссылку из логов';
-                    }
-                    
-                    // Показываем предупреждение и инструкцию
-                    window.utils.showToast(response.warning, 'error', 15000);
-                    
-                    // Также показываем alert с инструкцией
-                    setTimeout(() => {
-                        alert(warningMsg);
-                    }, 500);
+                // Show success message
+                if (response.emailSent) {
+                    window.utils.showToast('Письмо для подтверждения email отправлено. Проверьте почту.', 'success');
                 } else {
-                    window.utils.showToast('✅ Письмо для подтверждения отправлено! Проверьте почту (включая папку "Спам").', 'success', 8000);
+                    window.utils.showToast(response.message || 'Письмо для подтверждения email отправлено. Проверьте почту.', 'success');
                 }
                 resendVerificationContainer.style.display = 'none';
             } catch (error) {
-                console.error('Resend verification error:', error);
+                console.error('Verification email resend error:', error);
                 
                 // Понятные сообщения об ошибках для пользователя
-                let userMessage = 'Ошибка при отправке письма';
+                let userMessage = 'Ошибка при генерации ссылки для подтверждения';
                 
                 if (error.message) {
-                    // Проверяем на ограничение onboarding@resend.dev
-                    const isDomainRestriction = error.message.toLowerCase().includes('testing domain restriction') ||
-                                                error.message.toLowerCase().includes('can only send to your own email') ||
-                                                error.message.toLowerCase().includes('onboarding@resend.dev') ||
-                                                error.message.toLowerCase().includes('может отправлять только');
-                    
-                    if (isDomainRestriction) {
-                        userMessage = '⚠️ onboarding@resend.dev может отправлять письма только на email владельца Resend аккаунта. ' +
-                                    'Для отправки на другие адреса необходимо верифицировать домен в Resend Dashboard (https://resend.com/domains).';
-                    } else if (error.message.includes('Email уже подтвержден')) {
+                    if (error.message.includes('Email уже подтвержден')) {
                         userMessage = 'Этот email уже подтвержден. Вы можете войти в систему.';
                     } else if (error.message.includes('Invalid email') || error.message.includes('Неверный формат')) {
                         userMessage = 'Неверный формат email адреса.';
@@ -214,10 +170,10 @@ window.auth = (function() {
                         userMessage = 'Сервер не отвечает. Проверьте подключение к интернету и попробуйте позже.';
                     } else if (error.message.includes('Unauthorized') || error.message.includes('401')) {
                         userMessage = 'Ошибка доступа. Попробуйте обновить страницу и повторить попытку.';
-                    } else if (error.message.includes('500') || error.message.includes('Internal Server Error') || error.message.includes('Ошибка при отправке письма')) {
-                        userMessage = 'Временная ошибка сервера. Попробуйте через несколько минут. Если проблема сохраняется, обратитесь в поддержку.';
-                    } else if (error.message.includes('Не удалось отправить письмо') || error.message.includes('недоступен')) {
-                        userMessage = 'Сервис отправки писем временно недоступен. Попробуйте позже.';
+                    } else if (error.message.includes('500') || error.message.includes('Internal Server Error') || error.message.includes('Failed to send') || error.message.includes('Email service')) {
+                        userMessage = 'Ошибка отправки письма. Проверьте настройки EmailJS или обратитесь в поддержку.';
+                    } else if (error.message.includes('Не удалось') || error.message.includes('недоступен')) {
+                        userMessage = 'Сервис временно недоступен. Попробуйте позже.';
                     } else if (error.message.includes('базы данных') || error.message.includes('database')) {
                         userMessage = 'Ошибка подключения к базе данных. Попробуйте позже.';
                     } else if (error.message.includes('сети') || error.message.includes('network')) {
@@ -230,9 +186,53 @@ window.auth = (function() {
                 window.utils.showToast(userMessage, 'error', 10000);
             } finally {
                 resendVerificationBtn.disabled = false;
-                resendVerificationBtn.textContent = 'Отправить письмо повторно';
+                resendVerificationBtn.textContent = 'Получить ссылку повторно';
             }
         };
+
+        // Resend verification email handler logic inside register
+        const resendVerificationRegisterContainer = document.getElementById('resendVerificationRegisterContainer');
+        const resendVerificationRegisterBtn = document.getElementById('resendVerificationRegisterBtn');
+
+        if (resendVerificationRegisterBtn) {
+            resendVerificationRegisterBtn.onclick = async () => {
+                const email = document.getElementById('regEmail').value;
+                if (!email) return;
+
+                try {
+                    resendVerificationRegisterBtn.disabled = true;
+                    resendVerificationRegisterBtn.textContent = 'Отправка...';
+
+                    const response = await window.api.resendVerificationEmail(email);
+                    
+                    if (response.emailSent) {
+                        window.utils.showToast('Письмо для подтверждения email отправлено. Проверьте почту.', 'success');
+                    } else {
+                        window.utils.showToast(response.message || 'Письмо для подтверждения email отправлено. Проверьте почту.', 'success');
+                    }
+                    resendVerificationRegisterContainer.style.display = 'none';
+                    setTimeout(() => openLoginModal(), 1000);
+                } catch (error) {
+                    console.error('Verification email resend error (register):', error);
+                    let userMessage = 'Ошибка при генерации ссылки для подтверждения';
+                    
+                    if (error.message) {
+                        if (error.message.includes('Email уже подтвержден')) {
+                            userMessage = 'Этот email уже подтвержден. Вы можете войти в систему.';
+                            setTimeout(() => openLoginModal(), 1000);
+                        } else if (error.message.includes('500') || error.message.includes('Failed to send') || error.message.includes('EmailJS')) {
+                            userMessage = 'Ошибка отправки письма. Проверьте настройки EmailJS или обратитесь в поддержку.';
+                        } else {
+                            userMessage = error.message;
+                        }
+                    }
+                    window.utils.showToast(userMessage, 'error', 10000);
+                } finally {
+                    resendVerificationRegisterBtn.disabled = false;
+                    resendVerificationRegisterBtn.textContent = 'Отправить письмо повторно';
+                }
+            };
+        }
 
         // Login form submit
         loginForm.onsubmit = async (e) => {
@@ -282,6 +282,10 @@ window.auth = (function() {
         registerForm.onsubmit = async (e) => {
             e.preventDefault(); // Moved to the very top to stop page refresh on any error!
             
+            if (resendVerificationRegisterContainer) {
+                resendVerificationRegisterContainer.style.display = 'none';
+            }
+
             const startTime = new Date().toISOString();
             console.log(`[${startTime}] [Register Form] Submit event triggered`);
             console.log(`[${startTime}] [Register Form] Default prevented`);
@@ -320,7 +324,7 @@ window.auth = (function() {
                 // It requires email verification.
                 closeAllModals();
                 registerForm.reset();
-                window.utils.showToast('Регистрация успешна! На ваш Email отправлена ссылка для подтверждения. Пожалуйста, проверьте почту.', 'success');
+                window.utils.showToast('Регистрация успешна! Письмо для подтверждения email отправлено на вашу почту. Проверьте почту и перейдите по ссылке для подтверждения.', 'success');
                 // Open login modal so they are ready once they click the link
                 setTimeout(() => openLoginModal(), 1000);
             } catch (error) {
@@ -329,37 +333,24 @@ window.auth = (function() {
                 
                 const errorMessage = error.message || 'Ошибка регистрации. Попробуйте другой email.';
                 
-                // Проверяем на ограничение onboarding@resend.dev
-                const isDomainRestriction = errorMessage.toLowerCase().includes('testing domain restriction') ||
-                                            errorMessage.toLowerCase().includes('can only send to your own email') ||
-                                            errorMessage.toLowerCase().includes('onboarding@resend.dev') ||
-                                            errorMessage.toLowerCase().includes('может отправлять только');
-                
-                if (isDomainRestriction) {
-                    const domainRestrictionMsg = '⚠️ ОГРАНИЧЕНИЕ: onboarding@resend.dev может отправлять письма только на email владельца Resend аккаунта.\n\n' +
-                                                'РЕШЕНИЕ:\n' +
-                                                '1. Верифицируйте свой домен в Resend Dashboard: https://resend.com/domains\n' +
-                                                '2. После верификации домена, измените SENDER_EMAIL в Cloudflare Workers на ваш-email@ваш-домен.com\n' +
-                                                '3. Обновите секрет: wrangler secret put SENDER_EMAIL\n\n' +
-                                                'ВРЕМЕННОЕ РЕШЕНИЕ:\n' +
-                                                'Ссылка для подтверждения доступна в логах Cloudflare Workers.';
-                    window.utils.showToast('⚠️ onboarding@resend.dev может отправлять только на email владельца Resend аккаунта. Верифицируйте домен для отправки на любые адреса.', 'error', 15000);
-                    setTimeout(() => {
-                        alert(domainRestrictionMsg);
-                    }, 500);
-                } else if (errorMessage.includes('уже существует')) {
-                    const shouldResend = confirm(
-                        'Пользователь с таким email уже существует. Возможно, email не был подтвержден.\n\n' +
-                        'Отправить письмо для подтверждения повторно?'
-                    );
-                    
-                    if (shouldResend) {
-                        try {
-                            await window.api.resendVerificationEmail(email);
-                            window.utils.showToast('Письмо для подтверждения отправлено. Проверьте почту.', 'success');
-                            setTimeout(() => openLoginModal(), 1000);
-                        } catch (resendError) {
-                            window.utils.showToast(resendError.message || 'Ошибка при отправке письма', 'error');
+                if (errorMessage.includes('уже существует')) {
+                    if (resendVerificationRegisterContainer) {
+                        resendVerificationRegisterContainer.style.Display = 'block'; // Fallback uppercase D to match old logic style... wait, no, .style.display
+                        resendVerificationRegisterContainer.style.display = 'block';
+                    } else {
+                        // Fallback completely
+                        const shouldResend = confirm(
+                            'Пользователь с таким email уже существует. Возможно, email не был подтвержден.\n\n' +
+                            'Отправить письмо для подтверждения email повторно?'
+                        );
+                        if (shouldResend) {
+                            try {
+                                await window.api.resendVerificationEmail(email);
+                                window.utils.showToast('Письмо для подтверждения email отправлено. Проверьте почту.', 'success');
+                                setTimeout(() => openLoginModal(), 1000);
+                            } catch (resendError) {
+                                window.utils.showToast(resendError.message || 'Ошибка при отправке письма', 'error');
+                            }
                         }
                     }
                 } else {

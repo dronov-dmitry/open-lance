@@ -12,14 +12,172 @@ const validation = require('../utils/validation');
 const JWT_EXPIRATION = '7d';
 
 /**
+ * Send email via EmailJS
+ */
+async function sendEmailViaEmailJS(event, email, verificationLink) {
+    try {
+        // Check if EmailJS is configured
+        console.log('[Email] Checking EmailJS configuration...');
+        console.log('[Email] event exists:', !!event);
+        console.log('[Email] event.env exists:', !!(event && event.env));
+        if (event && event.env) {
+            console.log('[Email] event.env keys:', Object.keys(event.env).join(', '));
+            console.log('[Email] event.env has EMAILJS_PUBLIC_KEY:', 'EMAILJS_PUBLIC_KEY' in event.env);
+            console.log('[Email] event.env has EMAILJS_SERVICE_ID:', 'EMAILJS_SERVICE_ID' in event.env);
+            console.log('[Email] event.env has EMAILJS_TEMPLATE_ID:', 'EMAILJS_TEMPLATE_ID' in event.env);
+        }
+        
+        if (!event || !event.env) {
+            console.error('[Email] ❌ event.env is not available');
+            throw new Error('Email service configuration error: event.env not available');
+        }
+        
+        const publicKey = event.env.EMAILJS_PUBLIC_KEY;
+        const serviceId = event.env.EMAILJS_SERVICE_ID;
+        const templateId = event.env.EMAILJS_TEMPLATE_ID;
+        
+        console.log('[Email] Raw values - publicKey type:', typeof publicKey, 'value:', publicKey ? publicKey.substring(0, 5) + '...' : 'null/undefined');
+        console.log('[Email] Raw values - serviceId type:', typeof serviceId, 'value:', serviceId ? serviceId.substring(0, 5) + '...' : 'null/undefined');
+        console.log('[Email] Raw values - templateId type:', typeof templateId, 'value:', templateId ? templateId.substring(0, 5) + '...' : 'null/undefined');
+        
+        const hasPublicKey = !!(publicKey && publicKey.trim().length > 0);
+        const hasServiceId = !!(serviceId && serviceId.trim().length > 0);
+        const hasTemplateId = !!(templateId && templateId.trim().length > 0);
+        
+        console.log('[Email] EMAILJS_PUBLIC_KEY:', hasPublicKey ? `✅ Set (length: ${publicKey ? publicKey.length : 0})` : '❌ Missing or empty');
+        console.log('[Email] EMAILJS_SERVICE_ID:', hasServiceId ? `✅ Set (length: ${serviceId ? serviceId.length : 0})` : '❌ Missing or empty');
+        console.log('[Email] EMAILJS_TEMPLATE_ID:', hasTemplateId ? `✅ Set (length: ${templateId ? templateId.length : 0})` : '❌ Missing or empty');
+        
+        if (!hasPublicKey || !hasServiceId || !hasTemplateId) {
+            const missing = [];
+            if (!hasPublicKey) missing.push('EMAILJS_PUBLIC_KEY');
+            if (!hasServiceId) missing.push('EMAILJS_SERVICE_ID');
+            if (!hasTemplateId) missing.push('EMAILJS_TEMPLATE_ID');
+            
+            console.error(`[Email] ❌ EmailJS not fully configured. Missing or empty: ${missing.join(', ')}`);
+            console.error('[Email] To fix: Set secrets in Cloudflare Workers:');
+            console.error('[Email]   wrangler secret put EMAILJS_PUBLIC_KEY');
+            console.error('[Email]   wrangler secret put EMAILJS_SERVICE_ID');
+            console.error('[Email]   wrangler secret put EMAILJS_TEMPLATE_ID');
+            throw new Error(`Email service not configured. Missing or empty secrets: ${missing.join(', ')}. Please configure EmailJS in Cloudflare Workers.`);
+        }
+
+        const emailjsUrl = 'https://api.emailjs.com/api/v1.0/email/send';
+        
+        // Prepare email template parameters
+        // We provide multiple variable names for the email address to cover common 
+        // template configurations in the EmailJS dashboard.
+        const templateParams = {
+            user_email: email,
+            to_email: email,
+            email: email,
+            to_name: email.split('@')[0], // Optional, just in case template uses it
+            verification_link: verificationLink,
+            time: new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })
+        };
+
+        const requestBody = {
+            service_id: event.env.EMAILJS_SERVICE_ID,
+            template_id: event.env.EMAILJS_TEMPLATE_ID,
+            user_id: event.env.EMAILJS_PUBLIC_KEY,
+            template_params: templateParams
+        };
+
+        // If strict mode is enabled, EmailJS requires the private key as accessToken
+        if (event.env.EMAILJS_PRIVATE_KEY) {
+            requestBody.accessToken = event.env.EMAILJS_PRIVATE_KEY;
+        }
+
+        console.log('[Email] ✅ All EmailJS secrets are configured');
+        console.log('[Email] Sending email via EmailJS to:', email);
+        console.log('[Email] EmailJS Public Key (first 10 chars):', event.env.EMAILJS_PUBLIC_KEY.substring(0, 10) + '...');
+        console.log('[Email] EmailJS Service ID:', event.env.EMAILJS_SERVICE_ID);
+        console.log('[Email] EmailJS Template ID:', event.env.EMAILJS_TEMPLATE_ID);
+
+        const response = await fetch(emailjsUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorDetails = {};
+            try {
+                errorDetails = JSON.parse(errorText);
+            } catch {
+                errorDetails = { message: errorText };
+            }
+            
+            console.error('[Email] EmailJS API error:', response.status);
+            console.error('[Email] Error response:', errorText);
+            console.error('[Email] Error details:', errorDetails);
+            
+            // Provide specific error messages
+            let errorMessage = `Failed to send verification email. EmailJS API error: ${response.status}`;
+            if (errorDetails.message) {
+                errorMessage += ` - ${errorDetails.message}`;
+            }
+            
+            throw new Error(errorMessage);
+        }
+
+        const responseData = await response.json().catch(() => ({}));
+        console.log('[Email] Email successfully sent via EmailJS');
+        console.log('[Email] EmailJS response:', responseData);
+        
+        return { success: true };
+    } catch (error) {
+        console.error('[Email] Error sending email via EmailJS:', error);
+        console.error('[Email] Error stack:', error.stack);
+        throw error; // Re-throw to let caller handle the error
+    }
+}
+
+/**
  * Login handler
  */
 async function login(event) {
     try {
+        console.log('[Login] Starting login handler');
+        console.log('[Login] Event body type:', typeof event.body);
+        console.log('[Login] Event body:', event.body);
+        
         // Get JWT_SECRET from Cloudflare Workers env
         const JWT_SECRET = event.env?.JWT_SECRET || process.env.JWT_SECRET || 'your-secret-key-change-this';
         
-        const body = JSON.parse(event.body);
+        if (!JWT_SECRET || JWT_SECRET === 'your-secret-key-change-this') {
+            console.error('[Login] JWT_SECRET is not set or using default value!');
+        }
+        
+        // Parse body
+        let body;
+        try {
+            if (!event.body) {
+                console.error('[Login] Event body is null or undefined');
+                return {
+                    statusCode: 400,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ error: 'Request body is required' })
+                };
+            }
+            
+            if (typeof event.body === 'string') {
+                body = JSON.parse(event.body);
+            } else {
+                body = event.body;
+            }
+        } catch (parseError) {
+            console.error('[Login] Error parsing body:', parseError);
+            return {
+                statusCode: 400,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: 'Invalid JSON in request body: ' + parseError.message })
+            };
+        }
+        
         const { email, password } = body;
 
         // Validate input
@@ -43,9 +201,22 @@ async function login(event) {
         // For now, mock authentication
         
         // Query user by email
-        const user = await mongoManager.findOne('users', { 
-            email: email.toLowerCase() 
-        });
+        console.log('[Login] Querying user with email:', email.toLowerCase());
+        let user;
+        try {
+            user = await mongoManager.findOne('users', { 
+                email: email.toLowerCase() 
+            });
+            console.log('[Login] User found:', user ? 'yes' : 'no');
+        } catch (dbError) {
+            console.error('[Login] Database error:', dbError);
+            console.error('[Login] Database error stack:', dbError.stack);
+            return {
+                statusCode: 500,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: 'Database connection error: ' + dbError.message })
+            };
+        }
 
         if (!user) {
             return response.unauthorized('Неверный email или пароль');
@@ -93,11 +264,17 @@ async function login(event) {
             })
         };
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('[Login] Unexpected error:', error);
+        console.error('[Login] Error name:', error.name);
+        console.error('[Login] Error message:', error.message);
+        console.error('[Login] Error stack:', error.stack);
         return {
             statusCode: 500,
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ error: 'Login failed: ' + error.message })
+            body: JSON.stringify({ 
+                error: 'Login failed: ' + error.message,
+                details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            })
         };
     }
 }
@@ -166,107 +343,29 @@ async function register(event) {
         // Store user in MongoDB
         await mongoManager.insertOne('users', newUser);
 
-        // EMAIL SENDING LOGIC
-        const host = event.headers.origin || 'https://' + (event.env.FRONTEND_URL || 'localhost:8787'); 
+        // EMAIL SENDING LOGIC - Send via EmailJS
+        // Get host from request origin or FRONTEND_URL env variable
+        let host = event.headers.origin;
+        if (!host) {
+            const frontendUrl = event.env.FRONTEND_URL || 'localhost:8080';
+            // If FRONTEND_URL already has protocol, use it as is, otherwise add https://
+            host = frontendUrl.startsWith('http://') || frontendUrl.startsWith('https://') 
+                ? frontendUrl 
+                : `https://${frontendUrl}`;
+        }
+        // Remove trailing slash if present
+        host = host.replace(/\/$/, '');
         const verificationLink = `${host}/#/home?verify=${verificationToken}`;
         
-        if (event.env && event.env.RESEND_API_KEY && event.env.RESEND_API_KEY !== 'SIMULATE') {
-            console.log(`[Email] Отправка реального письма через Resend на ${email}...`);
-            const senderEmail = event.env.SENDER_EMAIL || 'onboarding@resend.dev';
-            console.log('[Email] Registration - Sender email:', senderEmail);
-            console.log('[Email] Registration - Recipient email:', email);
-            
-            try {
-                const resendResponse = await fetch('https://api.resend.com/emails', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${event.env.RESEND_API_KEY}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        from: `Open-Lance <${senderEmail}>`,
-                        to: [email],
-                        subject: 'Подтвердите почту на Open-Lance',
-                        html: `
-                            <h2>Добро пожаловать в Open-Lance!</h2>
-                            <p>Спасибо за регистрацию на платформе.</p>
-                            <p>Пожалуйста, подтвердите ваш email, перейдя по ссылке ниже:</p>
-                            <a href="${verificationLink}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">
-                                Подтвердить Email
-                            </a>
-                            <p>Или скопируйте эту ссылку в браузер:</p>
-                            <p>${verificationLink}</p>
-                            <hr />
-                            <small>Если вы не регистрировались на сайте, просто проигнорируйте это письмо.</small>
-                        `
-                    })
-                });
-
-                if (!resendResponse.ok) {
-                    const errText = await resendResponse.text();
-                    let errorDetails;
-                    try {
-                        errorDetails = JSON.parse(errText);
-                    } catch {
-                        errorDetails = { message: errText };
-                    }
-                    console.error('[Email] Ошибка API Resend при регистрации:', resendResponse.status);
-                    console.error('[Email] Error details:', errorDetails);
-                    console.error('[Email] Full error text:', errText);
-                    
-                    // Логируем детали для диагностики
-                    console.error('[Email] Recipient email that failed:', email);
-                    console.error('[Email] Sender email used:', senderEmail);
-                    
-                    // Проверяем, является ли ошибка связанной с ограничением onboarding@resend.dev
-                    const errorMessageText = (errorDetails.message || errText || '').toLowerCase();
-                    const isDomainRestriction = errorMessageText.includes('testing domain restriction') || 
-                                                errorMessageText.includes('can only send to your own email') ||
-                                                errorMessageText.includes('resend.dev domain is for testing');
-                    
-                    // Если ошибка 403, это может быть проблема с лимитами или правами
-                    if (resendResponse.status === 403) {
-                        console.error('[Email] 403 ошибка при регистрации - возможные причины:');
-                        if (isDomainRestriction && senderEmail === 'onboarding@resend.dev') {
-                            console.error('[Email] ⚠️  ОГРАНИЧЕНИЕ: onboarding@resend.dev может отправлять только на email владельца аккаунта Resend!');
-                            console.error('[Email] Решение: Верифицируйте свой домен в Resend Dashboard: https://resend.com/domains');
-                            console.error('[Email] После верификации домена, измените SENDER_EMAIL на ваш-email@ваш-домен.com');
-                        } else {
-                            console.error('[Email] 1. Лимит писем в день достигнут (free tier: 100 писем/день)');
-                            console.error('[Email] 2. Email адрес заблокирован или в черном списке');
-                            console.error('[Email] 3. API ключ не имеет прав на отправку');
-                            console.error('[Email] 4. Проблема с доменом отправителя');
-                        }
-                    }
-                    
-                    // Выводим ссылку в логи даже при ошибке
-                    let fallbackErrorMsg = `ОШИБКА Resend API: ${resendResponse.status} - ${errorDetails.message || errText}`;
-                    if (isDomainRestriction && senderEmail === 'onboarding@resend.dev') {
-                        fallbackErrorMsg = `ОШИБКА: onboarding@resend.dev может отправлять только на email владельца аккаунта Resend.\n` +
-                                          `Получатель: ${email}\n` +
-                                          `Решение: Верифицируйте домен в Resend Dashboard (https://resend.com/domains) и измените SENDER_EMAIL.`;
-                    }
-                    console.log(`\n\n=== УВЕДОМЛЕНИЕ (Fallback - Registration) ===\nРегистрация на email: ${email}\nСсылка для подтверждения:\n${verificationLink}\n\n${fallbackErrorMsg}\n===================\n\n`);
-                } else {
-                    const responseData = await resendResponse.json().catch(() => ({}));
-                    console.log('[Email] Письмо успешно отправлено при регистрации!');
-                    console.log('[Email] Resend response:', responseData);
-                }
-            } catch (err) {
-                console.error('[Email] Системная ошибка при отправке при регистрации:', err);
-                console.error('[Email] Error stack:', err.stack);
-                console.log(`\n\n=== УВЕДОМЛЕНИЕ (Fallback - Registration Exception) ===\nРегистрация на email: ${email}\nСсылка для подтверждения:\n${verificationLink}\n\nИСКЛЮЧЕНИЕ: ${err.name} - ${err.message}\n===================\n\n`);
-            }
-        } else {
-            // !! SIMULATED EMAIL SENDING !!
-            console.log(`\n\n=== УВЕДОМЛЕНИЕ ===\nИмитация отправки проверочного письма на email: ${email}\nСсылка для подтверждения:\n${verificationLink}\n===================\n\n`);
-        }
+        // Send email via EmailJS (required, no fallback)
+        await sendEmailViaEmailJS(event, email, verificationLink);
 
         return {
             statusCode: 201,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                message: 'Registration successful! Verification email has been sent.'
+                message: 'Регистрация успешна! Письмо для подтверждения email отправлено на вашу почту. Проверьте почту и перейдите по ссылке для подтверждения.',
+                emailSent: true
             })
         };
     } catch (error) {
@@ -412,210 +511,47 @@ async function resendVerificationEmail(event) {
             }
         );
 
-        // Send verification email
-        const host = event.headers.origin || event.headers['origin'] || 'https://' + (event.env?.FRONTEND_URL || 'localhost:8787'); 
+        // Send verification email via EmailJS
+        // Get host from request origin or FRONTEND_URL env variable
+        let host = event.headers.origin || event.headers['origin'];
+        if (!host) {
+            const frontendUrl = event.env?.FRONTEND_URL || 'localhost:8080';
+            // If FRONTEND_URL already has protocol, use it as is, otherwise add https://
+            host = frontendUrl.startsWith('http://') || frontendUrl.startsWith('https://') 
+                ? frontendUrl 
+                : `https://${frontendUrl}`;
+        }
+        // Remove trailing slash if present
+        host = host.replace(/\/$/, '');
         const verificationLink = `${host}/#/home?verify=${verificationToken}`;
         
-        console.log('[Email] Resend verification - checking Resend API key...');
-        console.log('[Email] Has RESEND_API_KEY:', !!(event.env && event.env.RESEND_API_KEY));
-        console.log('[Email] RESEND_API_KEY length:', event.env && event.env.RESEND_API_KEY ? event.env.RESEND_API_KEY.length : 0);
-        console.log('[Email] RESEND_API_KEY starts with "re_":', event.env && event.env.RESEND_API_KEY ? event.env.RESEND_API_KEY.startsWith('re_') : false);
-        console.log('[Email] RESEND_API_KEY value (first 15 chars):', event.env && event.env.RESEND_API_KEY ? (event.env.RESEND_API_KEY.substring(0, 15) + '...') : 'not set');
-        console.log('[Email] SENDER_EMAIL:', event.env && event.env.SENDER_EMAIL ? event.env.SENDER_EMAIL : 'not set (will use default)');
-        
-        const hasValidResendKey = event.env && 
-                                   event.env.RESEND_API_KEY && 
-                                   event.env.RESEND_API_KEY !== 'SIMULATE' && 
-                                   event.env.RESEND_API_KEY.trim() !== '' &&
-                                   event.env.RESEND_API_KEY.startsWith('re_');
-        
-        if (hasValidResendKey) {
-            console.log(`[Email] Повторная отправка письма подтверждения на ${email}...`);
-            // Используем onboarding@resend.dev по умолчанию для тестирования
-            // Этот адрес работает без верификации домена
-            const senderEmail = event.env.SENDER_EMAIL || 'onboarding@resend.dev';
-            console.log('[Email] Using sender email:', senderEmail);
-            
-            // Если используется кастомный домен, но он не верифицирован, используем onboarding@resend.dev
-            if (senderEmail !== 'onboarding@resend.dev' && !senderEmail.EndsWith('@resend.dev')) {
-                console.log('[Email] Custom domain detected. If 403 error occurs, verify domain in Resend Dashboard.');
-            }
-            
-            try {
-                const resendResponse = await fetch('https://api.resend.com/emails', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${event.env.RESEND_API_KEY}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        from: `Open-Lance <${senderEmail}>`,
-                        to: [email],
-                        subject: 'Подтвердите почту на Open-Lance',
-                        html: `
-                            <h2>Подтверждение Email</h2>
-                            <p>Вы запросили повторную отправку ссылки для подтверждения email.</p>
-                            <p>Пожалуйста, подтвердите ваш email, перейдя по ссылке ниже:</p>
-                            <a href="${verificationLink}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">
-                                Подтвердить Email
-                            </a>
-                            <p>Или скопируйте эту ссылку в браузер:</p>
-                            <p>${verificationLink}</p>
-                            <hr />
-                            <small>Если вы не запрашивали это письмо, просто проигнорируйте его.</small>
-                        `
-                    })
-                });
-
-                if (!resendResponse.ok) {
-                    const errText = await resendResponse.text();
-                    let errorDetails;
-                    try {
-                        errorDetails = JSON.parse(errText);
-                    } catch {
-                        errorDetails = { message: errText };
-                    }
-                    console.error('[Email] Ошибка API Resend:', resendResponse.status);
-                    console.error('[Email] Error details:', errorDetails);
-                    console.error('[Email] Full error text:', errText);
-                    
-                    // Логируем детали для диагностики
-                    console.error('[Email] Resend API Key used (first 15 chars):', event.env.RESEND_API_KEY.substring(0, 15) + '...');
-                    console.error('[Email] Sender email:', senderEmail);
-                    console.error('[Email] Recipient email:', email);
-                    
-                    let errorMessage = `Email сервис временно недоступен (ошибка ${resendResponse.status})`;
-                    let fallbackMessage = `ОШИБКА Resend API: ${resendResponse.status} - ${errorDetails.message || errText}`;
-                    
-                    // Обработка разных типов ошибок
-                    if (resendResponse.status === 401) {
-                        console.error('[Email] Resend API вернул 401 - неверный API ключ!');
-                        errorMessage = 'Resend API ключ неверный или истек. Проверьте настройки в Cloudflare Workers.';
-                        fallbackMessage = 'ОШИБКА: Resend API ключ неверный или истек. Проверьте настройки в Cloudflare Workers.';
-                    } else if (resendResponse.status === 403) {
-                        console.error('[Email] Resend API вернул 403 - недостаточно прав или проблема с отправкой!');
-                        console.error('[Email] Возможные причины:');
-                        console.error('[Email] 1. Лимит писем достигнут (free tier: 100 писем/день, 3000/месяц)');
-                        console.error('[Email] 2. Email адрес получателя заблокирован или в черном списке Resend');
-                        console.error('[Email] 3. Домен не верифицирован в Resend Dashboard (https://resend.com/domains)');
-                        console.error('[Email] 4. API ключ не имеет прав на отправку писем');
-                        console.error('[Email] 5. Отправитель (from email) не настроен правильно');
-                        console.error('[Email] 6. Проверьте лимиты в Resend Dashboard: https://resend.com/emails');
-                        console.error('[Email] 7. Проверьте статистику отправки: https://resend.com/emails');
-                        
-                        // Проверяем, является ли ошибка связанной с ограничением onboarding@resend.dev
-                        const errorMessageText = (errorDetails.message || errText || '').toLowerCase();
-                        const isDomainRestriction = errorMessageText.includes('testing domain restriction') || 
-                                                    errorMessageText.includes('can only send to your own email') ||
-                                                    errorMessageText.includes('resend.dev domain is for testing');
-                        
-                        // Проверяем, используется ли onboarding@resend.dev
-                        if (senderEmail === 'onboarding@resend.dev') {
-                            if (isDomainRestriction) {
-                                // Специальная обработка для ограничения onboarding@resend.dev
-                                errorMessage = 'onboarding@resend.dev может отправлять письма только на email владельца аккаунта Resend. ' +
-                                              'Для отправки на другие адреса необходимо верифицировать домен в Resend Dashboard.';
-                                fallbackMessage = `ОШИБКА: onboarding@resend.dev может отправлять только на email владельца аккаунта Resend.\n` +
-                                                `Получатель: ${email}\n\n` +
-                                                `РЕШЕНИЕ:\n` +
-                                                `1. Перейдите в Resend Dashboard: https://resend.com/domains\n` +
-                                                `2. Добавьте и верифицируйте свой домен (добавьте DNS записи DKIM и SPF)\n` +
-                                                `3. После верификации домена, измените SENDER_EMAIL в Cloudflare Workers на ваш-email@ваш-домен.com\n` +
-                                                `4. Обновите секрет: wrangler secret put SENDER_EMAIL`;
-                            } else {
-                                // Если используется onboarding@resend.dev, но все равно 403, это может быть:
-                                // 1. Лимит писем достигнут
-                                // 2. Email адрес заблокирован
-                                // 3. Проблема с правами API ключа
-                                errorMessage = 'Resend API: ошибка 403. Возможные причины: достигнут лимит писем (100/день на free tier), ' +
-                                              'email адрес заблокирован, или API ключ не имеет прав. Проверьте лимиты в Resend Dashboard.';
-                                fallbackMessage = `ОШИБКА 403: ${errorDetails.message || 'Проблема с отправкой'}. ` +
-                                                'Возможные причины:\n' +
-                                                '1. Достигнут лимит писем (free tier: 100/день) - проверьте https://resend.com/emails\n' +
-                                                '2. Email адрес "${email}" заблокирован Resend\n' +
-                                                '3. API ключ не имеет прав "Sending access" - проверьте https://resend.com/api-keys';
-                            }
-                        } else {
-                            if (isDomainRestriction) {
-                                errorMessage = 'Домен не верифицирован в Resend. Проверьте верификацию домена в Resend Dashboard.';
-                                fallbackMessage = `ОШИБКА: Домен не верифицирован.\n` +
-                                                `Проверьте верификацию домена в Resend Dashboard: https://resend.com/domains\n` +
-                                                `Убедитесь, что DNS записи (DKIM, SPF) добавлены и домен имеет статус "Verified".`;
-                            } else {
-                                errorMessage = 'Resend API: домен не верифицирован или недостаточно прав. ' +
-                                              'Проверьте верификацию домена в Resend Dashboard или используйте onboarding@resend.dev для тестирования.';
-                                fallbackMessage = `ОШИБКА 403: ${errorDetails.message || 'Домен не верифицирован'}. ` +
-                                                'Проверьте верификацию домена в Resend Dashboard (https://resend.com/domains) ' +
-                                                'или используйте onboarding@resend.dev (не требует верификации, но только для email владельца аккаунта).';
-                            }
-                        }
-                    } else if (resendResponse.status === 422) {
-                        console.error('[Email] Resend API вернул 422 - ошибка валидации!');
-                        errorMessage = `Ошибка валидации: ${errorDetails.message || 'Проверьте формат email адресов'}`;
-                        fallbackMessage = `ОШИБКА 422: ${errorDetails.message || errText}`;
-                    }
-                    
-                    console.log(`\n\n=== УВЕДОМЛЕНИЕ (Fallback) ===\nПовторная отправка проверочного письма на email: ${email}\nСсылка для подтверждения:\n${verificationLink}\n\n${fallbackMessage}\n===================\n\n`);
-                    
-                    // Возвращаем успех, но с предупреждением
-                    return {
-                        statusCode: 200,
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            message: 'Письмо для подтверждения email отправлено. Проверьте почту.',
-                            warning: `${errorMessage} Ссылка для подтверждения доступна в логах сервера.`
-                        })
-                    };
-                } else {
-                    const responseData = await resendResponse.json().catch(() => ({}));
-                    console.log('[Email] Письмо успешно отправлено через Resend API!');
-                    console.log('[Email] Resend response:', responseData);
-                }
-            } catch (err) {
-                console.error('[Email] Системная ошибка при отправке:', err);
-                console.error('[Email] Error name:', err.name);
-                console.error('[Email] Error message:', err.message);
-                console.error('[Email] Error stack:', err.stack);
-                
-                // Если произошла ошибка, но токен уже обновлен, все равно возвращаем успех
-                // с информацией о том, что нужно проверить логи
-                console.warn('[Email] Ошибка при отправке, но токен обновлен. Переключаемся на режим симуляции.');
-                console.log(`\n\n=== УВЕДОМЛЕНИЕ (Fallback - Exception) ===\nПовторная отправка проверочного письма на email: ${email}\nСсылка для подтверждения:\n${verificationLink}\n\nИСКЛЮЧЕНИЕ: ${err.name} - ${err.message}\n===================\n\n`);
-                
-                return {
-                    statusCode: 200,
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        message: 'Письмо для подтверждения email отправлено. Проверьте почту.',
-                        warning: `Ошибка сети при отправке письма: ${err.message}. Ссылка для подтверждения доступна в логах сервера.`
-                    })
-                };
-            }
-        } else {
-            // !! SIMULATED EMAIL SENDING !!
-            console.log(`\n\n=== УВЕДОМЛЕНИЕ ===\nПовторная отправка проверочного письма на email: ${email}\nСсылка для подтверждения:\n${verificationLink}\n===================\n\n`);
-            // В режиме симуляции все равно возвращаем успех, так как токен обновлен
-        }
+        // Send email via EmailJS (required, no fallback)
+        await sendEmailViaEmailJS(event, email, verificationLink);
 
         return {
             statusCode: 200,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                message: 'Письмо для подтверждения email отправлено. Проверьте почту.'
+                message: 'Письмо для подтверждения email отправлено. Проверьте почту.',
+                emailSent: true
             })
         };
     } catch (error) {
-        console.error('Resend verification error:', error);
-        console.error('Resend verification error stack:', error.stack);
+        console.error('Verification email resend error:', error);
+        console.error('Verification email resend error stack:', error.stack);
         
         // Проверяем тип ошибки для более понятного сообщения
-        let errorMessage = 'Не удалось отправить письмо для подтверждения. Попробуйте позже или обратитесь в поддержку.';
+        let errorMessage = 'Не удалось отправить письмо для подтверждения email. Попробуйте позже или обратитесь в поддержку.';
         
         if (error.message) {
             if (error.message.includes('MongoDB') || error.message.includes('database')) {
                 errorMessage = 'Ошибка подключения к базе данных. Попробуйте позже.';
             } else if (error.message.includes('network') || error.message.includes('fetch')) {
                 errorMessage = 'Ошибка сети при отправке письма. Проверьте подключение к интернету.';
+            } else if (error.message.includes('Email service') || error.message.includes('EmailJS') || error.message.includes('not configured')) {
+                errorMessage = `Ошибка EmailJS: ${error.message}`;
+            } else if (error.message.includes('Failed to send')) {
+                errorMessage = 'Не удалось отправить письмо. Проверьте настройки EmailJS или обратитесь в поддержку.';
             }
         }
         
@@ -623,8 +559,7 @@ async function resendVerificationEmail(event) {
             statusCode: 500,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                error: 'Ошибка при отправке письма',
-                message: errorMessage
+                error: errorMessage
             })
         };
     }
