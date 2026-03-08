@@ -1,0 +1,741 @@
+openapi: 3.0.3
+info:
+  title: Open-Lance API
+  description: |
+    REST API for Open-Lance Cloud Freelance Marketplace.
+    
+    ## Features
+    - User authentication with JWT
+    - Task creation and management
+    - Worker-client matching
+    - Profile management
+    - Multi-account AWS DynamoDB backend
+    
+    ## Authentication
+    Most endpoints require JWT authentication. Include the token in the Authorization header:
+    ```
+    Authorization: Bearer <your-jwt-token>
+    ```
+  version: 1.0.0
+  contact:
+    name: Open-Lance
+    email: support@open-lance.example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.open-lance.example.com/dev
+    description: Development server
+  - url: https://api.open-lance.example.com/prod
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication operations
+  - name: Tasks
+    description: Task management operations
+  - name: Users
+    description: User profile operations
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /auth/login
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: string
+
+    User:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        rating_as_client:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5
+        rating_as_worker:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5
+        completed_tasks_client:
+          type: integer
+          minimum: 0
+        completed_tasks_worker:
+          type: integer
+          minimum: 0
+        contact_links:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/ContactLink'
+        created_at:
+          type: string
+          format: date-time
+
+    ContactLink:
+      type: object
+      required:
+        - label
+        - url
+      properties:
+        label:
+          type: string
+          maxLength: 50
+          example: Telegram
+        url:
+          type: string
+          format: uri
+          example: https://t.me/username
+
+    Task:
+      type: object
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 5000
+        category:
+          type: string
+          enum: [Design, Development, Writing, Marketing, Other]
+        tags:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 50
+        budget_estimate:
+          type: number
+          format: float
+          minimum: 0
+        deadline:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [OPEN, MATCHED, COMPLETED, CANCELLED]
+        matched_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateTaskRequest:
+      type: object
+      required:
+        - title
+        - description
+        - category
+        - budget_estimate
+        - deadline
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          example: Разработка логотипа для кофейни
+        description:
+          type: string
+          maxLength: 5000
+          example: Нужен минималистичный логотип в векторе. Обсудим детали в ТГ.
+        category:
+          type: string
+          enum: [Design, Development, Writing, Marketing, Other]
+          example: Design
+        tags:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+          example: [logo, vector, minimalist]
+        budget_estimate:
+          type: number
+          format: float
+          minimum: 0
+          example: 5000
+        deadline:
+          type: string
+          format: date
+          example: "2024-12-01"
+
+    Application:
+      type: object
+      properties:
+        application_id:
+          type: string
+          format: uuid
+        task_id:
+          type: string
+          format: uuid
+        worker_id:
+          type: string
+          format: uuid
+        message:
+          type: string
+          maxLength: 1000
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, REJECTED]
+        created_at:
+          type: string
+          format: date-time
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and receive JWT token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  example: SecurePassword123!
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                      user:
+                        $ref: '#/components/schemas/User'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: User registration
+      description: Register new user account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                  minLength: 6
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      user_id:
+                        type: string
+                        format: uuid
+        '400':
+          description: Invalid input or user already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tasks:
+    get:
+      tags:
+        - Tasks
+      summary: List all tasks
+      description: Get list of tasks with optional filters
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [OPEN, MATCHED, COMPLETED, CANCELLED]
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: owner
+          in: query
+          description: Use 'me' to get own tasks
+          schema:
+            type: string
+        - name: search
+          in: query
+          description: Search in title and description
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Task'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags:
+        - Tasks
+      summary: Create new task
+      description: Create a new task as a client
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  example: create_task
+                data:
+                  $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '201':
+          description: Task created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Task'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tasks/{taskId}:
+    get:
+      tags:
+        - Tasks
+      summary: Get task by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Task details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Task'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Tasks
+      summary: Update task
+      description: Update task details (owner only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  example: update_task
+                data:
+                  type: object
+      responses:
+        '200':
+          description: Task updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Task'
+        '403':
+          description: Not task owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Tasks
+      summary: Delete task
+      description: Delete task (owner only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Task deleted
+        '403':
+          description: Not task owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tasks/{taskId}/apply:
+    post:
+      tags:
+        - Tasks
+      summary: Apply to task
+      description: Submit application as a worker
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  example: apply_to_task
+                data:
+                  type: object
+                  required:
+                    - message
+                  properties:
+                    message:
+                      type: string
+                      maxLength: 1000
+      responses:
+        '201':
+          description: Application submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      application:
+                        $ref: '#/components/schemas/Application'
+
+  /tasks/{taskId}/match:
+    post:
+      tags:
+        - Tasks
+      summary: Match worker to task
+      description: Select worker for task (task owner only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  example: match_worker
+                data:
+                  type: object
+                  required:
+                    - worker_id
+                  properties:
+                    worker_id:
+                      type: string
+                      format: uuid
+      responses:
+        '200':
+          description: Worker matched
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Task'
+
+  /users/{userId}:
+    get:
+      tags:
+        - Users
+      summary: Get user profile
+      description: Get user profile by ID or 'me' for current user
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User ID or 'me'
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/User'
+
+  /users/me:
+    put:
+      tags:
+        - Users
+      summary: Update own profile
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  example: update_profile
+                data:
+                  type: object
+                  properties:
+                    contact_links:
+                      type: array
+                      maxItems: 10
+                      items:
+                        $ref: '#/components/schemas/ContactLink'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/User'
+
+  /users/me/contacts:
+    post:
+      tags:
+        - Users
+      summary: Add contact link
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  example: add_contact_link
+                data:
+                  $ref: '#/components/schemas/ContactLink'
+      responses:
+        '201':
+          description: Contact link added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      link:
+                        $ref: '#/components/schemas/ContactLink'
+
+  /users/me/contacts/{linkId}:
+    delete:
+      tags:
+        - Users
+      summary: Remove contact link
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: linkId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Index of contact link to remove
+      responses:
+        '200':
+          description: Contact link removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
