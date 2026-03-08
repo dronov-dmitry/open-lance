@@ -221,7 +221,7 @@ async function updateProfile(event) {
         const updates = {};
         
         // Only allow updating certain fields
-        const allowedFields = ['contact_links', 'name', 'title', 'bio', 'avatar_url', 'hourly_rate', 'portfolio_url', 'specializations'];
+        const allowedFields = ['contact_links', 'name', 'title', 'bio', 'avatar_url', 'hourly_rate', 'portfolio_url', 'telegram_url', 'specializations'];
         
         for (const field of allowedFields) {
             if (profileData[field] !== undefined) {
@@ -255,6 +255,18 @@ async function updateProfile(event) {
                             updates[field] = profileData[field].trim();
                         } catch {
                             return response.error('Invalid portfolio URL format', 400);
+                        }
+                    } else {
+                        updates[field] = null;
+                    }
+                } else if (field === 'telegram_url') {
+                    // Validate URL format (e.g. https://t.me/channel)
+                    if (profileData[field] && profileData[field].trim()) {
+                        try {
+                            new URL(profileData[field]);
+                            updates[field] = profileData[field].trim();
+                        } catch {
+                            return response.error('Invalid Telegram URL format', 400);
                         }
                     } else {
                         updates[field] = null;

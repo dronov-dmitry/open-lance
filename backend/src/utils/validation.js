@@ -209,6 +209,14 @@ function validateProfileUpdate(profileData) {
         }
     }
 
+    if (profileData.telegram_url && typeof profileData.telegram_url === 'string' && profileData.telegram_url.trim()) {
+        if (!isValidUrl(profileData.telegram_url)) {
+            errors.push('Invalid Telegram URL format');
+        } else if (profileData.telegram_url.length > 500) {
+            errors.push('Telegram URL is too long');
+        }
+    }
+
     if (profileData.specializations !== undefined) {
         if (Array.isArray(profileData.specializations)) {
             if (profileData.specializations.length > 20) {

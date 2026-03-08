@@ -392,6 +392,18 @@ async function handleRequest(request, env) {
             }));
         }
 
+        if (path.match(/^\/users\/[^/]+\/reviews\/[^/]+$/) && method === 'PUT') {
+            event.pathParameters = event.pathParameters || {};
+            const parts = path.split('/');
+            event.pathParameters.userId = parts[2];
+            event.pathParameters.reviewId = parts[4];
+            const result = await reviewHandlers.updateReview(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
         if (path === '/users/me/contacts' && method === 'POST') {
             const result = await userHandlers.addContactLink(event);
             return addCorsHeaders(new Response(result.body, {

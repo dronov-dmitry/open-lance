@@ -24,32 +24,74 @@ function validateReviewData(data) {
 }
 
 /**
- * Recalculate and update the user's average rating 
+ * Infer target_role for a review when not stored (old data): was the target user the worker or the client?
+ * Application has worker_id + task_id; task has owner_id.
+ */
+async function inferTargetRole(review) {
+    const applicationsCollection = mongoManager.getCollection('applications');
+    const tasksCollection = mongoManager.getCollection('tasks');
+    const apps = await applicationsCollection.find({
+        status: 'ACCEPTED',
+        $or: [
+            { worker_id: review.target_user_id },
+            { worker_id: review.reviewer_id }
+        ]
+    }).toArray();
+    for (const app of apps) {
+        const task = await tasksCollection.findOne({ task_id: app.task_id });
+        if (!task) continue;
+        const ownerId = task.owner_id;
+        const workerId = app.worker_id;
+        if (workerId === review.target_user_id && ownerId === review.reviewer_id) return 'worker';
+        if (workerId === review.reviewer_id && ownerId === review.target_user_id) return 'client';
+    }
+    return 'worker'; // fallback
+}
+
+/**
+ * Recalculate and update the user's rating_as_worker and rating_as_client
  */
 async function updateUserRating(userId) {
     try {
         const reviewsCollection = mongoManager.getCollection('reviews');
-        
-        // Find all reviews for this user
         const reviewsArray = await reviewsCollection.find({ target_user_id: userId }).toArray();
-        if (reviewsArray.length === 0) return;
-        
-        // Calculate average rating
-        const totalRating = reviewsArray.reduce((sum, review) => sum + review.rating, 0);
-        const averageRating = totalRating / reviewsArray.length;
-        
-        // Update user profile
+        if (reviewsArray.length === 0) {
+            const usersCollection = mongoManager.getCollection('users');
+            await usersCollection.updateOne(
+                { user_id: userId },
+                { $set: { rating_as_worker: null, rating_as_client: null } }
+            );
+            return;
+        }
+
+        const workerRatings = [];
+        const clientRatings = [];
+        for (const review of reviewsArray) {
+            let role = review.target_role;
+            if (!role) role = await inferTargetRole(review);
+            if (role === 'worker') workerRatings.push(review.rating);
+            else clientRatings.push(review.rating);
+        }
+
+        const avgWorker = workerRatings.length > 0
+            ? workerRatings.reduce((s, r) => s + r, 0) / workerRatings.length
+            : null;
+        const avgClient = clientRatings.length > 0
+            ? clientRatings.reduce((s, r) => s + r, 0) / clientRatings.length
+            : null;
+
         const usersCollection = mongoManager.getCollection('users');
         await usersCollection.updateOne(
             { user_id: userId },
-            { 
-                $set: { 
-                    rating_as_worker: parseFloat(averageRating.toFixed(1)),
-                    review_count: reviewsArray.length // Optionally track the amount of reviews
-                } 
+            {
+                $set: {
+                    rating_as_worker: avgWorker != null ? parseFloat(avgWorker.toFixed(1)) : null,
+                    rating_as_client: avgClient != null ? parseFloat(avgClient.toFixed(1)) : null,
+                    review_count: reviewsArray.length
+                }
             }
         );
-        console.log(`Updated rating for ${userId} to ${averageRating}`);
+        console.log(`Updated ratings for ${userId}: as_worker=${avgWorker}, as_client=${avgClient}`);
     } catch (error) {
         console.error('Error updating user rating:', error);
     }
@@ -121,6 +163,9 @@ async function submitReview(event) {
             return response.error('You can only review users after the client accepts their application on a task', 403);
         }
 
+        // target_role: who was the target in the collaboration? worker = reviewed as executor, client = reviewed as task owner
+        const targetRole = hasAcceptedApplicationAsOwner ? 'worker' : 'client';
+
         const reviewsCollection = mongoManager.getCollection('reviews');
 
         // Check if user already reviewed this target
@@ -140,6 +185,7 @@ async function submitReview(event) {
             review_id: reviewId,
             target_user_id: targetUserId,
             reviewer_id: reviewerId,
+            target_role: targetRole,
             rating: rating,
             comment: comment.trim(),
             created_at: now,
@@ -290,8 +336,70 @@ async function getUserReviews(event) {
     }
 }
 
+/**
+ * Update own review (only author can update)
+ * PUT /users/:userId/reviews/:reviewId
+ */
+async function updateReview(event) {
+    try {
+        const targetUserId = event.pathParameters.userId;
+        const reviewId = event.pathParameters.reviewId;
+        const reviewerId = event.requestContext.authorizer.userId;
+
+        if (!targetUserId || !reviewId) {
+            return response.error('User ID and review ID are required', 400);
+        }
+
+        const body = JSON.parse(event.body || '{}');
+        const { rating, comment } = body.data || body;
+
+        const dataToValidate = { rating, comment };
+        const validationErrors = validateReviewData(dataToValidate);
+        if (validationErrors.length > 0) {
+            return response.error({ message: 'Validation failed', details: validationErrors }, 400);
+        }
+
+        const reviewsCollection = mongoManager.getCollection('reviews');
+        const review = await reviewsCollection.findOne({
+            review_id: reviewId,
+            target_user_id: targetUserId
+        });
+
+        if (!review) {
+            return response.error('Review not found', 404);
+        }
+
+        if (review.reviewer_id !== reviewerId) {
+            return response.error('You can only edit your own review', 403);
+        }
+
+        const now = new Date().toISOString();
+        await reviewsCollection.updateOne(
+            { review_id: reviewId, target_user_id: targetUserId },
+            {
+                $set: {
+                    rating: rating,
+                    comment: comment.trim(),
+                    updated_at: now
+                }
+            }
+        );
+
+        await updateUserRating(targetUserId);
+
+        return response.success({
+            message: 'Review updated successfully',
+            review_id: reviewId
+        });
+    } catch (error) {
+        console.error('Update review error:', error);
+        return response.serverError('Failed to update review');
+    }
+}
+
 module.exports = {
     submitReview,
     getUserReviews,
-    canReviewUser
+    canReviewUser,
+    updateReview
 };
