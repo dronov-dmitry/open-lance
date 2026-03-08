@@ -425,6 +425,17 @@ main {
     color: white;
 }
 
+/* Message author link (имя отправителя в списке сообщений) */
+.message-author-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.message-author-link:hover {
+    text-decoration: underline;
+}
+
 /* Toast Notifications */
 #toastContainer {
     position: fixed;
