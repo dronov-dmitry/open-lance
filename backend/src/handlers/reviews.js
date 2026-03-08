@@ -80,6 +80,47 @@ async function submitReview(event) {
             return response.error({ message: 'Validation failed', details: validationErrors }, 400);
         }
 
+        // Check if there is an ACCEPTED application between reviewer and target user
+        // Reviewer can be either owner (reviewing worker) or worker (reviewing owner)
+        
+        // Case 1: Reviewer is task owner, reviewing the worker
+        // Find ACCEPTED application where target is worker
+        const acceptedAppAsOwner = await mongoManager.findOne('applications', {
+            worker_id: targetUserId,
+            status: 'ACCEPTED'
+        });
+        
+        let hasAcceptedApplicationAsOwner = false;
+        if (acceptedAppAsOwner) {
+            // Check if the task owner is the reviewer
+            const task = await mongoManager.findOne('tasks', {
+                task_id: acceptedAppAsOwner.task_id,
+                owner_id: reviewerId
+            });
+            hasAcceptedApplicationAsOwner = !!task;
+        }
+
+        // Case 2: Reviewer is worker, reviewing the task owner
+        // Find ACCEPTED application where reviewer is worker
+        const acceptedAppAsWorker = await mongoManager.findOne('applications', {
+            worker_id: reviewerId,
+            status: 'ACCEPTED'
+        });
+        
+        let hasAcceptedApplicationAsWorker = false;
+        if (acceptedAppAsWorker) {
+            // Check if the task owner is the target user
+            const task = await mongoManager.findOne('tasks', {
+                task_id: acceptedAppAsWorker.task_id,
+                owner_id: targetUserId
+            });
+            hasAcceptedApplicationAsWorker = !!task;
+        }
+
+        if (!hasAcceptedApplicationAsOwner && !hasAcceptedApplicationAsWorker) {
+            return response.error('You can only review users after the client accepts their application on a task', 403);
+        }
+
         const reviewsCollection = mongoManager.getCollection('reviews');
 
         // Check if user already reviewed this target
@@ -118,6 +159,84 @@ async function submitReview(event) {
     } catch (error) {
         console.error('Submit review error:', error);
         return response.serverError('Failed to submit review');
+    }
+}
+
+/**
+ * Check if current user can review target user
+ * GET /users/:userId/reviews/can-review
+ */
+async function canReviewUser(event) {
+    try {
+        const targetUserId = event.pathParameters.userId;
+        const reviewerId = event.requestContext.authorizer.userId;
+        
+        if (!targetUserId) {
+            return response.error('Target user ID is missing from path', 400);
+        }
+
+        if (targetUserId === reviewerId) {
+            return response.success({ canReview: false, reason: 'You cannot review yourself' });
+        }
+
+        // Check if there is an ACCEPTED application between reviewer and target user
+        
+        // Case 1: Reviewer is task owner, reviewing the worker
+        // Find ACCEPTED application where target is worker
+        const acceptedAppAsOwner = await mongoManager.findOne('applications', {
+            worker_id: targetUserId,
+            status: 'ACCEPTED'
+        });
+        
+        let hasAcceptedApplicationAsOwner = false;
+        if (acceptedAppAsOwner) {
+            // Check if the task owner is the reviewer
+            const task = await mongoManager.findOne('tasks', {
+                task_id: acceptedAppAsOwner.task_id,
+                owner_id: reviewerId
+            });
+            hasAcceptedApplicationAsOwner = !!task;
+        }
+
+        // Case 2: Reviewer is worker, reviewing the task owner
+        // Find ACCEPTED application where reviewer is worker
+        const acceptedAppAsWorker = await mongoManager.findOne('applications', {
+            worker_id: reviewerId,
+            status: 'ACCEPTED'
+        });
+        
+        let hasAcceptedApplicationAsWorker = false;
+        if (acceptedAppAsWorker) {
+            // Check if the task owner is the target user
+            const task = await mongoManager.findOne('tasks', {
+                task_id: acceptedAppAsWorker.task_id,
+                owner_id: targetUserId
+            });
+            hasAcceptedApplicationAsWorker = !!task;
+        }
+
+        const canReview = hasAcceptedApplicationAsOwner || hasAcceptedApplicationAsWorker;
+        
+        // Check if already reviewed
+        let alreadyReviewed = false;
+        if (canReview) {
+            const reviewsCollection = mongoManager.getCollection('reviews');
+            const existingReview = await reviewsCollection.findOne({
+                target_user_id: targetUserId,
+                reviewer_id: reviewerId
+            });
+            alreadyReviewed = !!existingReview;
+        }
+
+        return response.success({
+            canReview: canReview && !alreadyReviewed,
+            alreadyReviewed: alreadyReviewed,
+            reason: !canReview ? 'You can only review users after accepting their application on a task' : 
+                    alreadyReviewed ? 'You have already reviewed this user' : null
+        });
+    } catch (error) {
+        console.error('Can review user error:', error);
+        return response.serverError('Failed to check review eligibility', error.message);
     }
 }
 
@@ -173,5 +292,6 @@ async function getUserReviews(event) {
 
 module.exports = {
     submitReview,
-    getUserReviews
+    getUserReviews,
+    canReviewUser
 };

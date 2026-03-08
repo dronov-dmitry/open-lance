@@ -12,10 +12,107 @@ const validation = require('../utils/validation');
  */
 async function getUsers(event) {
     try {
-        const users = await mongoManager.find('users', {});
+        await mongoManager.connect(event.env);
+        
+        const queryParams = event.queryStringParameters || {};
+        const { specialization, search, sortBy, sortOrder } = queryParams;
+
+        // Build query for filtering
+        let query = {};
+        
+        // Filter by specialization (from specializations array)
+        if (specialization && specialization.trim()) {
+            // Match if any specialization in array exactly matches the filter value (case-insensitive)
+            const specializationValue = specialization.trim();
+            query.specializations = { 
+                $elemMatch: { 
+                    $regex: `^${specializationValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 
+                    $options: 'i' 
+                } 
+            };
+        }
+        
+        // Search in name, title, bio, specializations
+        if (search && search.trim()) {
+            query.$or = [
+                { name: { $regex: search.trim(), $options: 'i' } },
+                { title: { $regex: search.trim(), $options: 'i' } },
+                { bio: { $regex: search.trim(), $options: 'i' } },
+                { specializations: { $elemMatch: { $regex: search.trim(), $options: 'i' } } }
+            ];
+        }
+
+        // Build sort object
+        let sortObj = { created_at: -1 }; // Default sort by creation date
+        if (sortBy) {
+            const order = sortOrder === 'asc' ? 1 : -1;
+            if (sortBy === 'rating_as_worker') {
+                // Sort by worker rating
+                sortObj = { rating_as_worker: order, created_at: -1 };
+            } else if (sortBy === 'rating_as_client') {
+                // Sort by client rating
+                sortObj = { rating_as_client: order, created_at: -1 };
+            } else if (sortBy === 'hourly_rate') {
+                // Sort by hourly rate
+                sortObj = { hourly_rate: order, created_at: -1 };
+            }
+        }
+
+        const users = await mongoManager.find('users', query, {
+            sort: sortObj
+        });
+        
+        // Post-process: replace null values with default value (2.5) for sorting
+        let processedUsers = users;
+        if (sortBy && users.length > 0) {
+            const defaultValue = 2.5;
+            
+            // Replace null/undefined values with default value
+            processedUsers = users.map(user => {
+                const processedUser = { ...user };
+                if (sortBy === 'rating_as_worker') {
+                    if (processedUser.rating_as_worker === null || processedUser.rating_as_worker === undefined) {
+                        processedUser.rating_as_worker = defaultValue;
+                    }
+                } else if (sortBy === 'rating_as_client') {
+                    if (processedUser.rating_as_client === null || processedUser.rating_as_client === undefined) {
+                        processedUser.rating_as_client = defaultValue;
+                    }
+                } else if (sortBy === 'hourly_rate') {
+                    if (processedUser.hourly_rate === null || processedUser.hourly_rate === undefined) {
+                        processedUser.hourly_rate = defaultValue;
+                    }
+                }
+                return processedUser;
+            });
+            
+            // Re-sort with replaced values
+            if (sortBy === 'rating_as_worker') {
+                const order = sortOrder === 'asc' ? 1 : -1;
+                processedUsers.sort((a, b) => {
+                    const aVal = a.rating_as_worker || defaultValue;
+                    const bVal = b.rating_as_worker || defaultValue;
+                    return (aVal - bVal) * order;
+                });
+            } else if (sortBy === 'rating_as_client') {
+                const order = sortOrder === 'asc' ? 1 : -1;
+                processedUsers.sort((a, b) => {
+                    const aVal = a.rating_as_client || defaultValue;
+                    const bVal = b.rating_as_client || defaultValue;
+                    return (aVal - bVal) * order;
+                });
+            } else if (sortBy === 'hourly_rate') {
+                const order = sortOrder === 'asc' ? 1 : -1;
+                processedUsers.sort((a, b) => {
+                    const aVal = a.hourly_rate || defaultValue;
+                    const bVal = b.hourly_rate || defaultValue;
+                    return (aVal - bVal) * order;
+                });
+            }
+        }
 
         // Remove sensitive data
-        const safeUsers = users.map(user => {
+        const safeUsers = processedUsers.map(user => {
             const safeUser = { ...user };
             delete safeUser.password_hash;
             delete safeUser._id;
@@ -29,6 +126,39 @@ async function getUsers(event) {
     } catch (error) {
         console.error('Error getting users:', error);
         return response.serverError('Failed to get users', error.message);
+    }
+}
+
+/**
+ * Get all unique specializations from all users
+ */
+async function getSpecializations(event) {
+    try {
+        await mongoManager.connect(event.env);
+        
+        // Find all users and filter those with non-empty specializations
+        const users = await mongoManager.find('users', {
+            specializations: { $exists: true, $ne: null }
+        });
+        
+        // Extract all specializations and make them unique
+        const allSpecializations = new Set();
+        users.forEach(user => {
+            if (user.specializations && Array.isArray(user.specializations)) {
+                user.specializations.forEach(spec => {
+                    if (spec && spec.trim()) {
+                        allSpecializations.add(spec.trim());
+                    }
+                });
+            }
+        });
+        
+        const sortedSpecializations = Array.from(allSpecializations).sort();
+        
+        return response.success({ specializations: sortedSpecializations });
+    } catch (error) {
+        console.error('Error getting specializations:', error);
+        return response.serverError('Failed to get specializations', error.message);
     }
 }
 
@@ -91,7 +221,7 @@ async function updateProfile(event) {
         const updates = {};
         
         // Only allow updating certain fields
-        const allowedFields = ['contact_links', 'name', 'title', 'bio', 'avatar_url'];
+        const allowedFields = ['contact_links', 'name', 'title', 'bio', 'avatar_url', 'hourly_rate', 'portfolio_url', 'specializations'];
         
         for (const field of allowedFields) {
             if (profileData[field] !== undefined) {
@@ -106,6 +236,43 @@ async function updateProfile(event) {
                 } else if (field === 'bio') {
                     // Bio needs to allow basic newlines, sanitizeString strips tags but keeps text
                     updates[field] = validation.sanitizeString(profileData[field], 1000);
+                } else if (field === 'hourly_rate') {
+                    // Validate hourly rate: must be positive number or null
+                    if (profileData[field] === null || profileData[field] === '') {
+                        updates[field] = null;
+                    } else {
+                        const rate = parseFloat(profileData[field]);
+                        if (isNaN(rate) || rate < 0) {
+                            return response.error('Hourly rate must be a positive number or empty', 400);
+                        }
+                        updates[field] = rate;
+                    }
+                } else if (field === 'portfolio_url') {
+                    // Validate URL format
+                    if (profileData[field] && profileData[field].trim()) {
+                        try {
+                            new URL(profileData[field]);
+                            updates[field] = profileData[field].trim();
+                        } catch {
+                            return response.error('Invalid portfolio URL format', 400);
+                        }
+                    } else {
+                        updates[field] = null;
+                    }
+                } else if (field === 'specializations') {
+                    // Handle specializations: array of strings
+                    if (Array.isArray(profileData[field])) {
+                        // Sanitize each specialization
+                        updates[field] = profileData[field]
+                            .map(spec => validation.sanitizeString(spec, 50).trim())
+                            .filter(spec => spec.length > 0);
+                    } else if (profileData[field] === null || profileData[field] === '') {
+                        updates[field] = [];
+                    } else {
+                        // If it's a string, convert to array
+                        const specs = String(profileData[field]).split(',').map(s => validation.sanitizeString(s, 50).trim()).filter(s => s.length > 0);
+                        updates[field] = specs;
+                    }
                 } else {
                     updates[field] = profileData[field]; // avatar_url (validated previously)
                 }
@@ -367,5 +534,6 @@ module.exports = {
     removeContactLink,
     updateRating,
     updateUserRole,
-    updateUserStatus
+    updateUserStatus,
+    getSpecializations
 };

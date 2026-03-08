@@ -384,8 +384,18 @@ class APIService {
 
     // ===== User/Profile Endpoints =====
 
-    async getUsers() {
-        return this.get('/users');
+    async getUsers(filters = {}) {
+        const params = new URLSearchParams();
+        if (filters.specialization) params.append('specialization', filters.specialization);
+        if (filters.search) params.append('search', filters.search);
+        if (filters.sortBy) params.append('sortBy', filters.sortBy);
+        if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
+        const queryString = params.toString();
+        return this.get('/users' + (queryString ? '?' + queryString : ''));
+    }
+
+    async getSpecializations() {
+        return this.get('/users/specializations');
     }
 
     async updateUserRole(targetUserId, newRole) {
@@ -438,6 +448,10 @@ class APIService {
 
     async getProfileReviews(userId) {
         return this.get(`/users/${userId}/reviews`);
+    }
+
+    async canReviewUser(userId) {
+        return this.get(`/users/${userId}/reviews/can-review`);
     }
 
     async submitProfileReview(userId, rating, comment) {

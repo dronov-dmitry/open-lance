@@ -37,11 +37,29 @@ window.router.register('profile', async function(props) {
                 window.currencyService.setPreferredCurrency(currencyVal);
             }
 
+            const hourlyRateInput = document.getElementById('edit-profile-hourly-rate').value.trim();
+            const hourlyRate = hourlyRateInput ? parseFloat(hourlyRateInput) : null;
+            
+            if (hourlyRateInput && (isNaN(hourlyRate) || hourlyRate < 0)) {
+                window.utils.showToast('Стоимость в час должна быть положительным числом', 'warning');
+                btn.disabled = false;
+                btn.textContent = 'Сохранить';
+                return;
+            }
+
+            // Parse specializations from comma-separated string
+            const specializationsInput = document.getElementById('edit-profile-specializations').value.trim();
+            const specializations = specializationsInput 
+                ? specializationsInput.split(',').map(s => s.trim()).filter(s => s.length > 0)
+                : [];
+
             const updates = {
                 name: document.getElementById('edit-profile-name').value.trim(),
                 title: document.getElementById('edit-profile-title').value.trim(),
                 bio: document.getElementById('edit-profile-bio').value.trim(),
-                portfolio_url: document.getElementById('edit-profile-portfolio').value.trim()
+                portfolio_url: document.getElementById('edit-profile-portfolio').value.trim(),
+                hourly_rate: hourlyRate,
+                specializations: specializations
             };
 
             const response = await window.api.request('/users/me', {
@@ -130,6 +148,12 @@ window.router.register('profile', async function(props) {
                     </div>
 
                     <div class="form-group">
+                        <label for="edit-profile-specializations">Специализация</label>
+                        <input type="text" id="edit-profile-specializations" value="${(p.specializations && Array.isArray(p.specializations) ? p.specializations.join(', ') : '') || ''}" placeholder="JavaScript, React, Node.js, Python" maxlength="500">
+                        <small style="color: #7f8c8d; font-size: 0.85rem;">Укажите ваши специализации через запятую (например: JavaScript, React, Node.js)</small>
+                    </div>
+
+                    <div class="form-group">
                         <label for="edit-profile-bio">О себе</label>
                         <textarea id="edit-profile-bio" rows="6" placeholder="Опишите свои навыки, опыт и технологии с которыми работаете..." maxlength="1000">${p.bio || ''}</textarea>
                     </div>
@@ -137,6 +161,12 @@ window.router.register('profile', async function(props) {
                     <div class="form-group">
                         <label for="edit-profile-portfolio">URL Портфолио (ссылка на сайт/GitHub/Behance)</label>
                         <input type="url" id="edit-profile-portfolio" value="${p.portfolio_url || ''}" placeholder="https://github.com/username">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="edit-profile-hourly-rate">Стоимость работы в час (₽)</label>
+                        <input type="number" id="edit-profile-hourly-rate" value="${p.hourly_rate || ''}" placeholder="1000" min="0" step="100">
+                        <small style="color: #7f8c8d; font-size: 0.85rem;">Укажите вашу стоимость работы в час в рублях (необязательно)</small>
                     </div>
 
                     <div class="form-group">
@@ -198,7 +228,15 @@ window.router.register('profile', async function(props) {
                 <div class="card" style="max-width: 600px; margin: 0 auto; text-align: center;">
                     ${avatarHtml}
                     <h2 style="margin: 0 0 5px 0;">${p.name || 'Пользователь не указал имя'}</h2>
-                    <h4 style="margin: 0 0 15px 0; color: #7f8c8d; font-weight: normal;">${p.title || 'Специальность не указана'}</h4>
+                    <h4 style="margin: 0 0 10px 0; color: #7f8c8d; font-weight: normal;">${p.title || 'Специальность не указана'}</h4>
+                    ${p.specializations && Array.isArray(p.specializations) && p.specializations.length > 0 ? `
+                        <div style="margin-bottom: 15px;">
+                            <p style="color: #7f8c8d; font-size: 0.85rem; margin-bottom: 5px; font-weight: 500;">Специализация:</p>
+                            <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;">
+                                ${p.specializations.map(spec => `<span style="background: var(--primary-color); color: white; padding: 4px 12px; border-radius: 15px; font-size: 0.85rem;">${spec}</span>`).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
                     <p style="color: #95a5a6; font-size: 0.9rem; margin-bottom: 20px;">${p.email}</p>
                     
                     <div style="display: flex; justify-content: center; gap: 30px; margin-bottom: 25px; border-top: 1px solid #f0f0f0; border-bottom: 1px solid #f0f0f0; padding: 15px 0;">
@@ -210,6 +248,12 @@ window.router.register('profile', async function(props) {
                             <div style="font-size: 1.5rem; font-weight: bold; color: var(--secondary-color);">${ratingClient}</div>
                             <div style="font-size: 0.8rem; color: #7f8c8d; text-transform: uppercase;">Рейтинг Заказчика</div>
                         </div>
+                        ${p.hourly_rate ? `
+                        <div>
+                            <div style="font-size: 1.5rem; font-weight: bold; color: #27ae60;">${window.utils.formatCurrency ? window.utils.formatCurrency(p.hourly_rate) : p.hourly_rate.toLocaleString('ru-RU') + ' ₽'}</div>
+                            <div style="font-size: 0.8rem; color: #7f8c8d; text-transform: uppercase;">В час</div>
+                        </div>
+                        ` : ''}
                     </div>
 
                     <div style="text-align: left; margin-bottom: 30px;">
@@ -221,12 +265,14 @@ window.router.register('profile', async function(props) {
                     <div style="text-align: left; margin-bottom: 30px;">
                         <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 15px;">
                             <h3 style="margin: 0;">Отзывы (${window.profileState.reviews ? window.profileState.reviews.length : 0})</h3>
-                            ${!isOwnProfile ? `
+                            ${!isOwnProfile && window.profileState.canReview ? `
                                 <button class="btn btn-outline" style="padding: 4px 10px; font-size: 0.8rem; color: #2c3e50; border-color: #2c3e50;" onclick="window.toggleReviewForm()">⭐ Оставить отзыв</button>
+                            ` : !isOwnProfile && window.profileState.reviewReason ? `
+                                <span style="font-size: 0.85rem; color: #7f8c8d; font-style: italic;">${window.profileState.reviewReason}</span>
                             ` : ''}
                         </div>
                         
-                        ${!isOwnProfile ? `
+                        ${!isOwnProfile && window.profileState.canReview ? `
                         <div id="inline-review-form-profile" style="display: none; margin-bottom: 20px; padding: 15px; border: 1px solid #f39c12; border-radius: 8px; background: #fffdf5;">
                             <h4 style="margin: 0 0 10px 0;">Ваш отзыв</h4>
                             <div style="margin-bottom: 10px;">
@@ -409,6 +455,20 @@ window.router.register('profile', async function(props) {
             const targetId = userId === 'me' ? window.profileState.data.user_id : userId;
             const reviewsResp = await window.api.getProfileReviews(targetId);
             window.profileState.reviews = reviewsResp.data || reviewsResp || [];
+            
+            // Check if current user can review this profile
+            if (!isOwnProfile && window.auth.isLoggedIn()) {
+                try {
+                    const canReviewResp = await window.api.canReviewUser(targetId);
+                    window.profileState.canReview = (canReviewResp.data || canReviewResp).canReview || false;
+                    window.profileState.reviewReason = (canReviewResp.data || canReviewResp).reason || null;
+                } catch (e) {
+                    console.error('[Profile] Error checking review eligibility:', e);
+                    window.profileState.canReview = false;
+                }
+            } else {
+                window.profileState.canReview = false;
+            }
             
             window.renderProfileView();
         } catch (e) {

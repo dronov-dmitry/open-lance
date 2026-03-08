@@ -137,9 +137,13 @@ async function handleRequest(request, env) {
             }
         }
 
-        // Parse body for POST/PUT/PATCH requests
+        // Parse body for POST/PUT/PATCH requests (except for endpoints that don't need body)
         let body = null;
-        if (['POST', 'PUT', 'PATCH'].includes(method)) {
+        const endpointsWithoutBody = ['/messages', '/messages/']; // Endpoints that might not need body
+        const needsBody = ['POST', 'PUT', 'PATCH'].includes(method) && 
+                         !path.match(/^\/messages\/[^/]+\/read$/); // markMessageRead doesn't need body
+        
+        if (needsBody) {
             try {
                 body = await getRequestBody(request);
                 console.log('[Backend] Body parsed successfully:', body ? 'yes' : 'no');
@@ -319,6 +323,14 @@ async function handleRequest(request, env) {
             }));
         }
 
+        if (path === '/users/specializations' && method === 'GET') {
+            const result = await userHandlers.getSpecializations(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
         if (path === '/users/me' && method === 'GET') {
             event.pathParameters = event.pathParameters || {};
             event.pathParameters.userId = 'me';
@@ -354,6 +366,16 @@ async function handleRequest(request, env) {
             event.pathParameters = event.pathParameters || {};
             event.pathParameters.userId = path.split('/')[2];
             const result = await reviewHandlers.getUserReviews(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        if (path.match(/^\/users\/[^/]+\/reviews\/can-review$/) && method === 'GET') {
+            event.pathParameters = event.pathParameters || {};
+            event.pathParameters.userId = path.split('/')[2];
+            const result = await reviewHandlers.canReviewUser(event);
             return addCorsHeaders(new Response(result.body, {
                 status: result.statusCode,
                 headers: { 'Content-Type': 'application/json' }

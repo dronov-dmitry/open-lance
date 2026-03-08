@@ -194,6 +194,49 @@ function validateProfileUpdate(profileData) {
         }
     }
 
+    if (profileData.hourly_rate !== undefined && profileData.hourly_rate !== null && profileData.hourly_rate !== '') {
+        const rate = parseFloat(profileData.hourly_rate);
+        if (isNaN(rate) || rate < 0) {
+            errors.push('Hourly rate must be a positive number or empty');
+        }
+    }
+
+    if (profileData.portfolio_url && typeof profileData.portfolio_url === 'string' && profileData.portfolio_url.trim()) {
+        if (!isValidUrl(profileData.portfolio_url)) {
+            errors.push('Invalid portfolio URL format');
+        } else if (profileData.portfolio_url.length > 500) {
+            errors.push('Portfolio URL is too long');
+        }
+    }
+
+    if (profileData.specializations !== undefined) {
+        if (Array.isArray(profileData.specializations)) {
+            if (profileData.specializations.length > 20) {
+                errors.push('Maximum 20 specializations allowed');
+            }
+            profileData.specializations.forEach((spec, index) => {
+                if (typeof spec !== 'string' || spec.trim().length === 0) {
+                    errors.push(`Specialization ${index + 1} must be a non-empty string`);
+                } else if (spec.trim().length > 50) {
+                    errors.push(`Specialization ${index + 1} must be less than 50 characters`);
+                }
+            });
+        } else if (typeof profileData.specializations === 'string') {
+            // Will be converted to array in handler
+            const specs = profileData.specializations.split(',').map(s => s.trim()).filter(s => s.length > 0);
+            if (specs.length > 20) {
+                errors.push('Maximum 20 specializations allowed');
+            }
+            specs.forEach((spec, index) => {
+                if (spec.length > 50) {
+                    errors.push(`Specialization ${index + 1} must be less than 50 characters`);
+                }
+            });
+        } else if (profileData.specializations !== null && profileData.specializations !== '') {
+            errors.push('Specializations must be an array or comma-separated string');
+        }
+    }
+
     return {
         valid: errors.length === 0,
         errors

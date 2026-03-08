@@ -38,6 +38,7 @@ window.router.register('task-details', async function(props) {
         }
 
         const isOwner = window.auth.isLoggedIn() && currentUserId === task.owner_id;
+        const isWorker = window.auth.isLoggedIn() && currentUserId === task.matched_user_id;
         const statusMap = {
             'OPEN': 'Открыта',
             'MATCHED': 'В работе',
@@ -58,18 +59,36 @@ window.router.register('task-details', async function(props) {
         // Worker application logic
         let actionFormHtml = '';
         
-        // Find existing application by current user
+        // Find existing application by current user - always get from API for accurate status
         let myApplication = null;
-        if (window.auth.isLoggedIn() && currentUserId && !isOwner && task.applications && Array.isArray(task.applications)) {
-            myApplication = task.applications.find(app => app.worker_id === currentUserId);
+        if (window.auth.isLoggedIn() && currentUserId && !isOwner) {
+            try {
+                const myAppsResponse = await window.api.getMyApplications();
+                const myApps = myAppsResponse.data?.applications || [];
+                const appForThisTask = myApps.find(app => app.task_id === taskId);
+                if (appForThisTask) {
+                    myApplication = appForThisTask;
+                }
+            } catch (error) {
+                console.error('[TaskDetails] Error fetching my applications:', error);
+                // Fallback to task.applications if API fails
+                if (task.applications && Array.isArray(task.applications)) {
+                    myApplication = task.applications.find(app => app.worker_id === currentUserId);
+                }
+            }
+        }
+        
+        // If task is MATCHED and current user is the matched worker, application should be ACCEPTED
+        if (myApplication && task.status === 'MATCHED' && task.matched_user_id === currentUserId) {
+            myApplication.status = 'ACCEPTED';
         }
 
-        if (task.status === 'OPEN' && window.auth.isLoggedIn() && !isOwner) {
+        if ((task.status === 'OPEN' || (task.status === 'MATCHED' && isWorker)) && window.auth.isLoggedIn() && !isOwner) {
             if (myApplication) {
                 // User has already applied
                 const statusStyles = {
                     'PENDING': { color: '#f39c12', text: 'Ожидает рассмотрения' },
-                    'ACCEPTED': { color: '#2ecc71', text: 'Одобрен' },
+                    'ACCEPTED': { color: '#2ecc71', text: 'Вы приняты на выполнение задачи' },
                     'REJECTED': { color: '#e74c3c', text: 'Отклонен' }
                 };
                 const appStatus = statusStyles[myApplication.status] || { color: '#7f8c8d', text: myApplication.status };
@@ -99,7 +118,7 @@ window.router.register('task-details', async function(props) {
                                     <textarea id="editApplicationMessage" required rows="4" style="width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; font-family: inherit; resize: vertical; margin-bottom: 15px;">${myApplication.message}</textarea>
                                     <div style="display: flex; gap: 10px;">
                                         <button type="submit" class="btn btn-primary">Сохранить изменения</button>
-                                        <button type="button" onclick="window.toggleEditMyApplication()" class="btn btn-outline">Отмена</button>
+                                        <button type="button" onclick="window.toggleEditMyApplication()" class="btn btn-outline" style="color: #2c3e50; border-color: #2c3e50;">Отмена</button>
                                     </div>
                                 </form>
                             </div>
@@ -154,7 +173,7 @@ window.router.register('task-details', async function(props) {
                                     ${app.status === 'PENDING' ? `
                                         <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px;">
                                             <button onclick="window.updateApplicationStatus('${app.application_id}', 'ACCEPTED', '${taskId}')" class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">Принять</button>
-                                            <button onclick="window.updateApplicationStatus('${app.application_id}', 'REJECTED', '${taskId}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem;">Отклонить</button>
+                                            <button onclick="window.updateApplicationStatus('${app.application_id}', 'REJECTED', '${taskId}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem; color: #e74c3c; border-color: #e74c3c;">Отклонить</button>
                                             <button onclick="window.router.navigate('profile', { id: '${app.worker_id}' })" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">Профиль</button>
                                             <button onclick="window.toggleInlineMessageForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">✉️ Сообщение</button>
                                         </div>
@@ -163,7 +182,12 @@ window.router.register('task-details', async function(props) {
                                             <button onclick="window.updateApplicationStatus('${app.application_id}', 'REJECTED', '${taskId}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem; color: #e74c3c; border-color: #e74c3c;">Отменить кандидата</button>
                                             <button onclick="window.router.navigate('profile', { id: '${app.worker_id}' })" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">Профиль исполнителя</button>
                                             <button onclick="window.toggleInlineMessageForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">✉️ Написать</button>
-                                            <button onclick="window.toggleInlineReviewForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">⭐ Отзыв</button>
+                                        </div>
+                                    ` : task.status === 'MATCHED' && task.matched_user_id === app.worker_id ? `
+                                        <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px; flex-wrap: wrap;">
+                                            <button onclick="window.router.navigate('profile', { id: '${app.worker_id}' })" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">Профиль исполнителя</button>
+                                            <button onclick="window.toggleInlineMessageForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">✉️ Написать</button>
+                                            <button onclick="window.toggleInlineReviewForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">⭐ Отзыв исполнителю</button>
                                         </div>
                                         <div id="inline-review-form-${app.worker_id}" style="display: none; margin-top: 15px; padding: 15px; border: 1px solid #f39c12; border-radius: 8px; background: #fffdf5;">
                                             <h4 style="margin: 0 0 12px 0; color: #2c3e50;">Оставить отзыв</h4>
@@ -182,7 +206,7 @@ window.router.register('task-details', async function(props) {
                                                 <textarea id="inline-review-text-${app.worker_id}" rows="3" placeholder="Расскажите об опыте работы с исполнителем..." style="width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
                                             </div>
                                             <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                                                <button onclick="window.toggleInlineReviewForm('${app.worker_id}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem;">Отмена</button>
+                                                <button onclick="window.toggleInlineReviewForm('${app.worker_id}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem; color: #2c3e50; border-color: #2c3e50;">Отмена</button>
                                                 <button onclick="window.submitInlineReview('${app.worker_id}')" class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">Опубликовать</button>
                                             </div>
                                         </div>
@@ -202,7 +226,7 @@ window.router.register('task-details', async function(props) {
                                         <textarea id="inline-msg-text-${app.worker_id}" rows="3" placeholder="Напишите сообщение..." style="width: 100%; margin-bottom: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
                                         <div style="display: flex; gap: 10px;">
                                             <button onclick="window.sendInlineMessage('${app.worker_id}')" class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">Отправить</button>
-                                            <button onclick="window.toggleInlineMessageForm('${app.worker_id}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem;">Отмена</button>
+                                            <button onclick="window.toggleInlineMessageForm('${app.worker_id}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem; color: #2c3e50; border-color: #2c3e50;">Отмена</button>
                                         </div>
                                     </div>
                                 </div>
@@ -258,9 +282,45 @@ window.router.register('task-details', async function(props) {
                             </div>
                             
                             ${(!isOwner && window.auth.isLoggedIn()) ? `
-                                <button onclick="window.router.navigate('messages')" class="btn btn-secondary" style="margin-left: 15px; padding: 4px 10px; font-size: 0.8rem;">✉️ Сообщение</button>
+                                <button onclick="window.toggleInlineMessageForm('${task.owner_id}')" class="btn btn-secondary" style="margin-left: 15px; padding: 4px 10px; font-size: 0.8rem;">✉️ Сообщение</button>
+                            ` : ''}
+                            ${isWorker && task.status === 'MATCHED' ? `
+                                <button onclick="window.toggleInlineReviewForm('${task.owner_id}')" class="btn btn-secondary" style="margin-left: 15px; padding: 4px 10px; font-size: 0.8rem;">⭐ Отзыв заказчику</button>
                             ` : ''}
                         </div>
+                        ${(!isOwner && window.auth.isLoggedIn()) ? `
+                            <div id="inline-msg-form-${task.owner_id}" style="display: none; margin-top: 15px; padding: 15px; border: 1px solid #4a90e2; border-radius: 8px; background: #f0f7ff;">
+                                <h4 style="margin: 0 0 12px 0; color: #2c3e50;">Сообщение заказчику</h4>
+                                <textarea id="inline-msg-text-${task.owner_id}" rows="4" placeholder="Введите ваше сообщение..." style="width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; font-family: inherit; resize: vertical; margin-bottom: 12px;"></textarea>
+                                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                                    <button onclick="window.toggleInlineMessageForm('${task.owner_id}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem; color: #2c3e50; border-color: #2c3e50;">Отмена</button>
+                                    <button onclick="window.sendInlineMessage('${task.owner_id}')" class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">Отправить</button>
+                                </div>
+                            </div>
+                        ` : ''}
+                        ${isWorker && task.status === 'MATCHED' ? `
+                            <div id="inline-review-form-${task.owner_id}" style="display: none; margin-top: 15px; padding: 15px; border: 1px solid #f39c12; border-radius: 8px; background: #fffdf5;">
+                                <h4 style="margin: 0 0 12px 0; color: #2c3e50;">Оставить отзыв заказчику</h4>
+                                <div style="margin-bottom: 10px;">
+                                    <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.9rem;">Оценка</label>
+                                    <select id="inline-review-rating-${task.owner_id}" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-family: inherit;">
+                                        <option value="5">⭐⭐⭐⭐⭐ (5) Отлично</option>
+                                        <option value="4">⭐⭐⭐⭐ (4) Хорошо</option>
+                                        <option value="3">⭐⭐⭐ (3) Нормально</option>
+                                        <option value="2">⭐⭐ (2) Плохо</option>
+                                        <option value="1">⭐ (1) Ужасно</option>
+                                    </select>
+                                </div>
+                                <div style="margin-bottom: 10px;">
+                                    <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.9rem;">Комментарий</label>
+                                    <textarea id="inline-review-text-${task.owner_id}" rows="3" placeholder="Расскажите об опыте работы с заказчиком..." style="width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
+                                </div>
+                                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                                    <button onclick="window.toggleInlineReviewForm('${task.owner_id}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem; color: #2c3e50; border-color: #2c3e50;">Отмена</button>
+                                    <button onclick="window.submitInlineReview('${task.owner_id}')" class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">Опубликовать</button>
+                                </div>
+                            </div>
+                        ` : ''}
                     ` : ''}
                     
                     <div style="display: flex; flex-wrap: wrap; gap: 20px; color: #7f8c8d; margin-bottom: 1.5rem; font-size: 1.1rem;">
@@ -457,6 +517,21 @@ window.toggleInlineReviewForm = function(workerId) {
 
 // Submit inline review for accepted worker
 window.submitInlineReview = async function(workerId) {
+    // Check if can review
+    try {
+        const canReviewResp = await window.api.canReviewUser(workerId);
+        const canReview = (canReviewResp.data || canReviewResp).canReview;
+        if (!canReview) {
+            const reason = (canReviewResp.data || canReviewResp).reason || 'Вы не можете оставить отзыв этому пользователю';
+            window.utils.showToast(reason, 'warning');
+            return;
+        }
+    } catch (error) {
+        console.error('Error checking review eligibility:', error);
+        window.utils.showToast('Ошибка при проверке возможности оставить отзыв', 'error');
+        return;
+    }
+
     const ratingEl = document.getElementById(`inline-review-rating-${workerId}`);
     const textEl = document.getElementById(`inline-review-text-${workerId}`);
     const rating = parseInt(ratingEl ? ratingEl.value : '5', 10);
@@ -488,16 +563,16 @@ window.submitInlineReview = async function(workerId) {
 };
 
 // Handle inline message form toggle
-window.toggleInlineMessageForm = function(workerId) {
-    const formEl = document.getElementById(`inline-msg-form-${workerId}`);
+window.toggleInlineMessageForm = function(userId) {
+    const formEl = document.getElementById(`inline-msg-form-${userId}`);
     if (formEl) {
         formEl.style.display = formEl.style.display === 'none' ? 'block' : 'none';
     }
 };
 
 // Send inline message
-window.sendInlineMessage = async function(workerId) {
-    const textEl = document.getElementById(`inline-msg-text-${workerId}`);
+window.sendInlineMessage = async function(userId) {
+    const textEl = document.getElementById(`inline-msg-text-${userId}`);
     const message = textEl ? textEl.value.trim() : '';
 
     if (!message) {
@@ -505,19 +580,24 @@ window.sendInlineMessage = async function(workerId) {
         return;
     }
 
+    if (message.length < 5) {
+        window.utils.showToast('Сообщение должно быть не менее 5 символов', 'warning');
+        return;
+    }
+
     try {
-        const btn = document.querySelector(`#inline-msg-form-${workerId} .btn-primary`);
+        const btn = document.querySelector(`#inline-msg-form-${userId} .btn-primary`);
         if (btn) {
             btn.disabled = true;
             btn.textContent = 'Отправка...';
         }
 
-        await window.api.sendMessage(workerId, message);
+        await window.api.sendMessage(userId, message);
         window.utils.showToast('Сообщение отправлено!', 'success');
         
         // Hide and clear form
-        textEl.value = '';
-        window.toggleInlineMessageForm(workerId);
+        if (textEl) textEl.value = '';
+        window.toggleInlineMessageForm(userId);
         
         if (btn) {
             btn.disabled = false;
@@ -526,7 +606,7 @@ window.sendInlineMessage = async function(workerId) {
     } catch (error) {
         console.error('Error sending inline message:', error);
         window.utils.showToast(error.message || 'Ошибка при отправке', 'error');
-        const btn = document.querySelector(`#inline-msg-form-${workerId} .btn-primary`);
+        const btn = document.querySelector(`#inline-msg-form-${userId} .btn-primary`);
         if (btn) {
             btn.disabled = false;
             btn.textContent = 'Отправить';

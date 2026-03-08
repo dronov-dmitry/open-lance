@@ -70,11 +70,20 @@ async function getMyApplications(event) {
                 // Strip _id to prevent serialization issues
                 const { _id: appId, ...cleanApp } = app;
                 
+                // If task is MATCHED and this worker is the matched user, application should be ACCEPTED
+                if (task && task.status === 'MATCHED' && task.matched_user_id === app.worker_id) {
+                    cleanApp.status = 'ACCEPTED';
+                }
+                
                 if (task) {
                     const { _id: taskId, ...cleanTask } = task;
                     if (cleanTask.applications && Array.isArray(cleanTask.applications)) {
                         cleanTask.applications = cleanTask.applications.map(a => {
                             const { _id, ...cleanA } = a;
+                            // Also update status in embedded applications if task is MATCHED
+                            if (task.status === 'MATCHED' && task.matched_user_id === a.worker_id) {
+                                cleanA.status = 'ACCEPTED';
+                            }
                             return cleanA;
                         });
                     }
@@ -220,6 +229,36 @@ async function updateApplicationStatus(event) {
                 }
             }
         );
+
+        // If application is accepted, update task status to MATCHED
+        if (body.status === 'ACCEPTED') {
+            await mongoManager.updateOne(
+                'tasks',
+                { task_id: application.task_id },
+                {
+                    $set: {
+                        matched_user_id: application.worker_id,
+                        status: 'MATCHED',
+                        updated_at: new Date().toISOString()
+                    }
+                }
+            );
+            
+            // Also update in task's applications array
+            await mongoManager.updateOne(
+                'tasks',
+                {
+                    task_id: application.task_id,
+                    'applications.worker_id': application.worker_id
+                },
+                {
+                    $set: {
+                        'applications.$.status': 'ACCEPTED',
+                        'applications.$.updated_at': new Date().toISOString()
+                    }
+                }
+            );
+        }
 
         // Strip _id before returning
         const { _id, ...cleanApp } = result.document || {};

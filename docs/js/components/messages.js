@@ -53,7 +53,7 @@ window.router.register('messages', async () => {
                         </div>
                         <div class="message-content" style="white-space: pre-wrap; margin-bottom: 10px; color: var(--text-color);">${msg.content}</div>
                         <div class="message-actions" style="display: flex; gap: 10px; align-items: center;">
-                            ${isUnread ? `<button class="btn btn-outline" style="font-size: 0.8rem;" onclick="window.markRead('${msg.message_id}')">Отметить как прочитанное</button>` : ''}
+                            ${isUnread ? `<button class="btn btn-outline" style="font-size: 0.8rem; color: #2c3e50; border-color: #2c3e50;" onclick="window.markRead('${msg.message_id}')">Отметить как прочитанное</button>` : ''}
                             ${tab === 'inbox' ? `<button class="btn btn-primary" style="font-size: 0.8rem;" onclick="window.showReplyBox('${tab === 'sent' ? msg.receiver_id : msg.sender_id}', '${partnerName.replace(/'/g, "\\'")}')">Ответить</button>` : ''}
                         </div>
                     </div>

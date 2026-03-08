@@ -52,7 +52,7 @@ window.utils = {
         toast.style.opacity = '1';
         toast.style.visibility = 'visible';
         
-        // Auto remove after 10 seconds
+        // Auto remove after 5 seconds
         const toastElement = toast;
         const removeToast = () => {
             const removeTime = new Date().toISOString();
@@ -68,7 +68,7 @@ window.utils = {
             }
         };
         
-        const timeoutId = setTimeout(removeToast, 10000);
+        const timeoutId = setTimeout(removeToast, 5000);
         
         // Click to dismiss
         toastElement.addEventListener('click', () => {
@@ -238,7 +238,13 @@ window.router.register('my-tasks', async function() {
                     <h2 style="margin-bottom: 1rem;">Мои отклики (как исполнитель)</h2>
                     ${myApplications && myApplications.length > 0 ? `
                         <div class="grid grid-2">
-                            ${myApplications.map(app => `
+                            ${myApplications.map(app => {
+                                // If task is MATCHED and this worker is the matched user, application should be ACCEPTED
+                                let appStatus = app.status;
+                                if (app.task && app.task.status === 'MATCHED' && app.task.matched_user_id === app.worker_id) {
+                                    appStatus = 'ACCEPTED';
+                                }
+                                return `
                                 <div class="task-card">
                                     <h3 class="card-title">${app.task_title || (app.task ? app.task.title : 'Задача')}</h3>
                                     <p style="color: #7f8c8d; margin-bottom: 1rem;">
@@ -249,11 +255,12 @@ window.router.register('my-tasks', async function() {
                                         ${app.message}
                                     </p>
                                     <div class="task-footer" style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span class="task-status status-${app.status.toLowerCase()}">${getTaskStatusText(app.status)}</span>
+                                        <span class="task-status status-${appStatus.toLowerCase()}">${getTaskStatusText(appStatus)}</span>
                                         ${app.task_id ? `<button onclick="viewTaskDetails('${app.task_id}')" class="btn btn-secondary">Подробнее</button>` : ''}
                                     </div>
                                 </div>
-                            `).join('')}
+                            `;
+                            }).join('')}
                         </div>
                     ` : `
                         <p style="color: #7f8c8d;">Вы пока не откликались на задачи</p>
@@ -358,6 +365,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
         window.dispatchEvent(new Event('popstate'));
     }
+
+    // Delegated click: "Подробнее" / profile link (works for dynamically inserted buttons)
+    document.addEventListener('click', function(e) {
+        const el = e.target.closest('[data-profile-id]');
+        if (el) {
+            e.preventDefault();
+            const id = el.getAttribute('data-profile-id');
+            if (id && window.router && typeof window.router.navigate === 'function') {
+                window.router.navigate('profile', { id });
+            }
+        }
+    });
 });
 // Handle global errors
 window.addEventListener('error', (event) => {

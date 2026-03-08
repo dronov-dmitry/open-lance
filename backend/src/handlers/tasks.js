@@ -381,6 +381,33 @@ async function matchWorker(event) {
             { returnUpdatedDocument: true }
         );
 
+        // Update application status to ACCEPTED in applications collection
+        await mongoManager.updateOne(
+            'applications',
+            { task_id: taskId, worker_id: worker_id },
+            {
+                $set: {
+                    status: 'ACCEPTED',
+                    updated_at: new Date().toISOString()
+                }
+            }
+        );
+
+        // Also update in task's applications array
+        await mongoManager.updateOne(
+            'tasks',
+            { 
+                task_id: taskId,
+                'applications.worker_id': worker_id
+            },
+            {
+                $set: {
+                    'applications.$.status': 'ACCEPTED',
+                    'applications.$.updated_at': new Date().toISOString()
+                }
+            }
+        );
+
         // Remove MongoDB _id field
         const { _id, ...cleanTask } = result.document;
 
