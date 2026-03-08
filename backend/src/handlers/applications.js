@@ -16,23 +16,77 @@ async function getMyApplications(event) {
         const userId = event.requestContext.authorizer.userId;
         console.log('[getMyApplications] User ID:', userId);
 
-        // Get all applications for this user
-        const applications = await mongoManager.find('applications', {
+        // 1. Get from applications collection
+        const standaloneApps = await mongoManager.find('applications', {
             worker_id: userId
         });
 
-        console.log('[getMyApplications] Found applications:', applications.length);
+        // 2. Get from tasks embedded array (older applications)
+        const tasksWithApps = await mongoManager.find('tasks', {
+            'applications.worker_id': userId
+        });
 
-        // Get task details for each application
+        // 3. Extract embedded apps
+        const embeddedApps = [];
+        tasksWithApps.forEach(task => {
+            if (task.applications && Array.isArray(task.applications)) {
+                task.applications.forEach(app => {
+                    if (app.worker_id === userId) {
+                        embeddedApps.push({
+                            ...app,
+                            task_id: task.task_id
+                        });
+                    }
+                });
+            }
+        });
+
+        // 4. Merge and deduplicate by application_id
+        const allAppsMap = new Map();
+        [...embeddedApps, ...standaloneApps].forEach(app => {
+            if (app.application_id) {
+                allAppsMap.set(app.application_id, app);
+            } else {
+                // If no application_id, use task_id + worker_id as key (for legacy apps)
+                const fallbackKey = `${app.task_id || 'unknown'}_${app.worker_id || 'unknown'}`;
+                if (!allAppsMap.has(fallbackKey)) {
+                    allAppsMap.set(fallbackKey, app);
+                }
+            }
+        });
+        const applications = Array.from(allAppsMap.values());
+
+        console.log('[getMyApplications] Found standalone apps:', standaloneApps.length);
+        console.log('[getMyApplications] Found embedded apps:', embeddedApps.length);
+        console.log('[getMyApplications] Total unique applications:', applications.length);
+
+        // 5. Get task details and strip _id safely
         const applicationsWithTasks = await Promise.all(
             applications.map(async (app) => {
                 const task = await mongoManager.findOne('tasks', {
                     task_id: app.task_id
                 });
                 
+                // Strip _id to prevent serialization issues
+                const { _id: appId, ...cleanApp } = app;
+                
+                if (task) {
+                    const { _id: taskId, ...cleanTask } = task;
+                    if (cleanTask.applications && Array.isArray(cleanTask.applications)) {
+                        cleanTask.applications = cleanTask.applications.map(a => {
+                            const { _id, ...cleanA } = a;
+                            return cleanA;
+                        });
+                    }
+                    return {
+                        ...cleanApp,
+                        task: cleanTask
+                    };
+                }
+                
                 return {
-                    ...app,
-                    task: task || null
+                    ...cleanApp,
+                    task: null
                 };
             })
         );
@@ -70,10 +124,22 @@ async function getTaskApplications(event) {
             return response.forbidden('You do not have permission to view applications for this task');
         }
 
-        // Get all applications for this task
-        const applications = await mongoManager.find('applications', {
+        // 1. Get all applications for this task from standalone collection
+        const standaloneApps = await mongoManager.find('applications', {
             task_id: taskId
         });
+
+        // 2. Get from task's embedded array
+        const embeddedApps = task.applications || [];
+
+        // 3. Merge and deduplicate
+        const allAppsMap = new Map();
+        [...embeddedApps, ...standaloneApps].forEach(app => {
+            if (app.application_id) {
+                allAppsMap.set(app.application_id, app);
+            }
+        });
+        const applications = Array.from(allAppsMap.values());
 
         console.log('[getTaskApplications] Found applications:', applications.length);
 
@@ -84,10 +150,12 @@ async function getTaskApplications(event) {
                     user_id: app.worker_id
                 });
                 
+                // Strip _id to prevent serialization issues
+                const { _id: appId, ...cleanApp } = app;
+                
                 return {
-                    ...app,
+                    ...cleanApp,
                     user: user ? {
-                        _id: user._id,
                         email: user.email,
                         fullName: user.profile?.fullName || null,
                         avatar: user.profile?.avatar || null,
@@ -153,9 +221,12 @@ async function updateApplicationStatus(event) {
             }
         );
 
+        // Strip _id before returning
+        const { _id, ...cleanApp } = result.document || {};
+
         return response.success({
             message: 'Application status updated',
-            application: result.document
+            application: cleanApp
         });
     } catch (error) {
         console.error('[updateApplicationStatus] Error:', error);
@@ -237,9 +308,12 @@ async function updateApplicationMessage(event) {
             }
         );
 
+        // Strip _id before returning
+        const { _id, ...cleanApp } = result.document || {};
+
         return response.success({
             message: 'Application message updated',
-            application: result.document
+            application: cleanApp
         });
     } catch (error) {
         console.error('[updateApplicationMessage] Error:', error);

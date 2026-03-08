@@ -303,6 +303,7 @@ async function applyToTask(event) {
         }
 
         // Create application
+        const now = new Date().toISOString();
         const application = {
             application_id: uuidv4(),
             task_id: taskId,
@@ -310,7 +311,8 @@ async function applyToTask(event) {
             worker_id: userId,
             message: validation.sanitizeString(message, 1000),
             status: 'PENDING',
-            created_at: new Date().toISOString()
+            created_at: now,
+            updated_at: now
         };
 
         // Store application in separate collection
@@ -323,9 +325,11 @@ async function applyToTask(event) {
             { $push: { applications: application } }
         );
 
+        const { _id, ...cleanApp } = application;
+
         return response.success({ 
             message: 'Application submitted successfully',
-            application 
+            application: cleanApp
         }, 201);
     } catch (error) {
         console.error('Error applying to task:', error);

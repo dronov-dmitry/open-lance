@@ -89,7 +89,7 @@ window.router.register('task-details', async function(props) {
                                 ${myApplication.status === 'PENDING' ? `
                                     <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px;">
                                         <button onclick="window.toggleEditMyApplication()" class="btn btn-outline" style="color: #2c3e50; border-color: #2c3e50;">Изменить отклик</button>
-                                        <button onclick="window.withdrawMyApplication('${myApplication.application_id}')" class="btn btn-outline" style="color: #e74c3c; border-color: #e74c3c;">Отозвать отклик</button>
+                                        <button onclick="window.withdrawMyApplication('${myApplication.application_id}', '${taskId}')" class="btn btn-outline" style="color: #e74c3c; border-color: #e74c3c;">Отозвать отклик</button>
                                     </div>
                                 ` : ''}
                             </div>
@@ -315,10 +315,22 @@ window.submitApplication = async function(event, taskId) {
         
         await window.api.applyToTask(taskId, message);
         
+        // Clear cache for "My Tasks" to ensure new application appears
+        localStorage.removeItem('my-tasks-cache');
+        localStorage.removeItem('my-tasks-cache-time');
+        
+        // Show success message and wait for it to be visible
         window.utils.showToast('Вы успешно откликнулись на задачу!', 'success');
         
-        // Refresh page silently to update status
-        window.router.navigate('task-details', { id: taskId });
+        // Wait for toast to be rendered and visible before navigating
+        // Use requestAnimationFrame to ensure DOM update, then wait a bit more
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                    window.router.navigate('task-details', { id: taskId }, { force: true });
+                }, 800); // Give user time to see the notification
+            });
+        });
     } catch (error) {
         console.error('[TaskDetails] Error applying:', error);
         window.utils.showToast(error.message || 'Ошибка при отправке отклика', 'error');
@@ -360,9 +372,18 @@ window.saveMyApplication = async function(event, applicationId) {
         await window.api.updateApplicationMessage(applicationId, message);
         window.utils.showToast('Отклик успешно обновлен!', 'success');
         
-        // Refresh page
-        const props = window.router.getRouteParams();
-        window.router.navigate('task-details', { id: props.id || window.location.hash.split('/')[1] }, { force: true });
+        // Clear cache for "My Tasks" to ensure updated application is shown
+        localStorage.removeItem('my-tasks-cache');
+        localStorage.removeItem('my-tasks-cache-time');
+        
+        // Refresh page - get taskId from current route
+        const currentTaskId = (window.router.getCurrentParams && window.router.getCurrentParams().id) || window.location.hash.split('?')[0].split('/').pop();
+        if (currentTaskId) {
+            window.router.navigate('task-details', { id: currentTaskId }, { force: true });
+        } else {
+            // Fallback: reload the page
+            window.location.reload();
+        }
     } catch (error) {
         console.error('Error updating application:', error);
         window.utils.showToast(error.message || 'Ошибка при обновлении отклика', 'error');
@@ -372,7 +393,7 @@ window.saveMyApplication = async function(event, applicationId) {
 };
 
 // Withdraw application
-window.withdrawMyApplication = async function(applicationId) {
+window.withdrawMyApplication = async function(applicationId, taskId) {
     if (!confirm('Вы уверены, что хотите отозвать свой отклик?')) {
         return;
     }
@@ -381,9 +402,18 @@ window.withdrawMyApplication = async function(applicationId) {
         await window.api.deleteApplication(applicationId);
         window.utils.showToast('Отклик отозван', 'success');
         
-        // Refresh page
-        const props = window.router.getRouteParams();
-        window.router.navigate('task-details', { id: props.id || window.location.hash.split('/')[1] }, { force: true });
+        // Clear cache for "My Tasks" to ensure application is removed
+        localStorage.removeItem('my-tasks-cache');
+        localStorage.removeItem('my-tasks-cache-time');
+        
+        // Refresh page - use taskId if provided, otherwise try to get from current route
+        const currentTaskId = taskId || (window.router.getCurrentParams && window.router.getCurrentParams().id) || window.location.hash.split('?')[0].split('/').pop();
+        if (currentTaskId) {
+            window.router.navigate('task-details', { id: currentTaskId }, { force: true });
+        } else {
+            // Fallback: reload the page
+            window.location.reload();
+        }
     } catch (error) {
         console.error('Error withdrawing application:', error);
         window.utils.showToast(error.message || 'Ошибка при отзыве отклика', 'error');

@@ -44,8 +44,13 @@ window.utils = {
         container.appendChild(toast);
         console.log(`[${timestamp}] [showToast] Toast #${toastId} added to DOM`);
         
-        // Force reflow
+        // Force reflow to ensure styles are applied
         void toast.offsetHeight;
+        
+        // Ensure toast is visible
+        toast.style.display = 'block';
+        toast.style.opacity = '1';
+        toast.style.visibility = 'visible';
         
         // Auto remove after 10 seconds
         const toastElement = toast;
@@ -132,7 +137,8 @@ window.router.register('my-tasks', async function() {
         // Optimistic loading: показываем кэш сразу, если есть
         const cached = localStorage.getItem('my-tasks-cache');
         const cacheTime = localStorage.getItem('my-tasks-cache-time');
-        const CACHE_TTL = 5 * 60 * 1000; // 5 минут
+        // Disable optimization caching to ensure reliable display of new applications
+        const CACHE_TTL = 0; // 0 минут, всегда загружать свежие данные
         
         let myTasks = [];
         let myApplications = [];
@@ -234,16 +240,17 @@ window.router.register('my-tasks', async function() {
                         <div class="grid grid-2">
                             ${myApplications.map(app => `
                                 <div class="task-card">
-                                    <h3 class="card-title">${app.task_title}</h3>
+                                    <h3 class="card-title">${app.task_title || (app.task ? app.task.title : 'Задача')}</h3>
                                     <p style="color: #7f8c8d; margin-bottom: 1rem;">
-                                        Откликнулись: ${window.utils.formatDate(app.applied_at)}
+                                        Откликнулись: ${window.utils.formatDate(app.created_at || app.updated_at)}
                                     </p>
                                     <p style="margin-bottom: 1rem;">
                                         <strong>Ваше сообщение:</strong><br>
                                         ${app.message}
                                     </p>
-                                    <div class="task-footer">
+                                    <div class="task-footer" style="display: flex; justify-content: space-between; align-items: center;">
                                         <span class="task-status status-${app.status.toLowerCase()}">${getTaskStatusText(app.status)}</span>
+                                        ${app.task_id ? `<button onclick="viewTaskDetails('${app.task_id}')" class="btn btn-secondary">Подробнее</button>` : ''}
                                     </div>
                                 </div>
                             `).join('')}
@@ -269,7 +276,10 @@ function getTaskStatusText(status) {
         'OPEN': 'Открыта',
         'MATCHED': 'В работе',
         'COMPLETED': 'Завершена',
-        'CANCELLED': 'Отменена'
+        'CANCELLED': 'Отменена',
+        'PENDING': 'Ожидает решения',
+        'ACCEPTED': 'Принят',
+        'REJECTED': 'Отклонен'
     };
     return statusMap[status] || status;
 }
