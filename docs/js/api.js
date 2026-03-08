@@ -460,6 +460,12 @@ class APIService {
         });
     }
 
+    async updateProfileReview(userId, reviewId, rating, comment) {
+        return this.put(`/users/${userId}/reviews/${reviewId}`, {
+            data: { rating, comment }
+        });
+    }
+
     // ===== Message Endpoints =====
 
     async sendMessage(receiverId, content) {

@@ -58,6 +58,7 @@ window.router.register('profile', async function(props) {
                 title: document.getElementById('edit-profile-title').value.trim(),
                 bio: document.getElementById('edit-profile-bio').value.trim(),
                 portfolio_url: document.getElementById('edit-profile-portfolio').value.trim(),
+                telegram_url: document.getElementById('edit-profile-telegram').value.trim(),
                 hourly_rate: hourlyRate,
                 specializations: specializations
             };
@@ -164,6 +165,11 @@ window.router.register('profile', async function(props) {
                     </div>
 
                     <div class="form-group">
+                        <label for="edit-profile-telegram">URL Telegram-канала</label>
+                        <input type="url" id="edit-profile-telegram" value="${p.telegram_url || ''}" placeholder="https://t.me/channel">
+                    </div>
+
+                    <div class="form-group">
                         <label for="edit-profile-hourly-rate">Стоимость работы в час (₽)</label>
                         <input type="number" id="edit-profile-hourly-rate" value="${p.hourly_rate || ''}" placeholder="1000" min="0" step="100">
                         <small style="color: #7f8c8d; font-size: 0.85rem;">Укажите вашу стоимость работы в час в рублях (необязательно)</small>
@@ -224,6 +230,9 @@ window.router.register('profile', async function(props) {
             const ratingWorker = p.rating_as_worker ? p.rating_as_worker.toFixed(1) : '—';
             const ratingClient = p.rating_as_client ? p.rating_as_client.toFixed(1) : '—';
 
+            const currentUser = window.auth.getCurrentUser();
+            const currentUserId = currentUser ? currentUser.user_id : null;
+
             container.innerHTML = `
                 <div class="card" style="max-width: 600px; margin: 0 auto; text-align: center;">
                     ${avatarHtml}
@@ -239,27 +248,28 @@ window.router.register('profile', async function(props) {
                     ` : ''}
                     <p style="color: #95a5a6; font-size: 0.9rem; margin-bottom: 20px;">${p.email}</p>
                     
-                    <div style="display: flex; justify-content: center; gap: 30px; margin-bottom: 25px; border-top: 1px solid #f0f0f0; border-bottom: 1px solid #f0f0f0; padding: 15px 0;">
-                        <div>
+                    <div style="display: flex; margin-bottom: 25px; border-top: 1px solid #f0f0f0; border-bottom: 1px solid #f0f0f0; padding: 15px 0;">
+                        <div style="flex: 0 0 33.333%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
                             <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary-color);">${ratingWorker}</div>
                             <div style="font-size: 0.8rem; color: #7f8c8d; text-transform: uppercase;">Рейтинг Исполнителя</div>
                         </div>
-                        <div>
+                        <div style="flex: 0 0 33.333%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
                             <div style="font-size: 1.5rem; font-weight: bold; color: var(--secondary-color);">${ratingClient}</div>
                             <div style="font-size: 0.8rem; color: #7f8c8d; text-transform: uppercase;">Рейтинг Заказчика</div>
                         </div>
-                        ${p.hourly_rate ? `
-                        <div>
+                        <div style="flex: 0 0 33.333%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+                            ${p.hourly_rate ? `
                             <div style="font-size: 1.5rem; font-weight: bold; color: #27ae60;">${window.utils.formatCurrency ? window.utils.formatCurrency(p.hourly_rate) : p.hourly_rate.toLocaleString('ru-RU') + ' ₽'}</div>
                             <div style="font-size: 0.8rem; color: #7f8c8d; text-transform: uppercase;">В час</div>
+                            ` : '—'}
                         </div>
-                        ` : ''}
                     </div>
 
                     <div style="text-align: left; margin-bottom: 30px;">
                         <h3 style="margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px;">О себе</h3>
                         <p style="white-space: pre-wrap; color: #2c3e50; line-height: 1.6;">${p.bio || 'Пользователь еще не заполнил информацию о себе.'}</p>
                         ${p.portfolio_url ? `<p style="margin-top: 10px;"><a href="${p.portfolio_url}" target="_blank" rel="noopener noreferrer" style="color: var(--primary-color); text-decoration: none; font-size: 0.95rem;">🔗 Портфолио / Сайт</a></p>` : ''}
+                        ${p.telegram_url ? `<p style="margin-top: 8px;"><a href="${p.telegram_url}" target="_blank" rel="noopener noreferrer" style="color: var(--primary-color); text-decoration: none; font-size: 0.95rem;">📱 Telegram-канал</a></p>` : ''}
                     </div>
                     
                     <div style="text-align: left; margin-bottom: 30px;">
@@ -299,18 +309,48 @@ window.router.register('profile', async function(props) {
                         <div id="profile-reviews-list">
                             ${(!window.profileState.reviews || window.profileState.reviews.length === 0) 
                                 ? '<p style="color: #95a5a6; font-style: italic;">У этого пользователя пока нет отзывов.</p>' 
-                                : window.profileState.reviews.map(review => `
-                                    <div class="review-card" style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #f0f0f0;">
-                                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                                            <strong style="color: var(--text-color);">${review.reviewer?.name || 'Пользователь'}</strong>
-                                            <span style="color: #f39c12; font-size: 0.9rem;">${'⭐'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</span>
+                                : window.profileState.reviews.map(review => {
+                                    const isMyReview = currentUserId && review.reviewer_id === currentUserId;
+                                    return `
+                                    <div class="review-card" id="review-card-${review.review_id}" data-review-id="${review.review_id}" data-target-user-id="${p.user_id}" data-rating="${review.rating}" style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #f0f0f0;">
+                                        <div class="review-card-static">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                                                <div>
+                                                    <strong style="color: var(--text-color);">${review.reviewer?.name || 'Пользователь'}</strong>
+                                                    <span style="color: #f39c12; font-size: 0.9rem; margin-left: 8px;">${'⭐'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</span>
+                                                </div>
+                                                ${isMyReview ? `<button type="button" class="btn btn-outline" style="padding: 4px 10px; font-size: 0.8rem; color: #2c3e50; border-color: #2c3e50;" onclick="window.startEditReview('${review.review_id}')">Редактировать</button>` : ''}
+                                            </div>
+                                            <div style="font-size: 0.8rem; color: #95a5a6; margin-bottom: 8px;">
+                                                ${new Date(review.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                            </div>
+                                            <p id="review-comment-${review.review_id}" style="margin: 0; line-height: 1.5; color: #34495e; white-space: pre-wrap; font-size: 0.95rem;">${review.comment}</p>
                                         </div>
-                                        <div style="font-size: 0.8rem; color: #95a5a6; margin-bottom: 8px;">
-                                            ${new Date(review.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                        ${isMyReview ? `
+                                        <div id="review-edit-form-${review.review_id}" style="display: none; margin-top: 10px; padding: 12px; border: 1px solid #f39c12; border-radius: 8px; background: #fffdf5;">
+                                            <div style="margin-bottom: 10px;">
+                                                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Оценка</label>
+                                                <select id="review-edit-rating-${review.review_id}" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+                                                    <option value="5" ${review.rating === 5 ? 'selected' : ''}>⭐⭐⭐⭐⭐ (5)</option>
+                                                    <option value="4" ${review.rating === 4 ? 'selected' : ''}>⭐⭐⭐⭐ (4)</option>
+                                                    <option value="3" ${review.rating === 3 ? 'selected' : ''}>⭐⭐⭐ (3)</option>
+                                                    <option value="2" ${review.rating === 2 ? 'selected' : ''}>⭐⭐ (2)</option>
+                                                    <option value="1" ${review.rating === 1 ? 'selected' : ''}>⭐ (1)</option>
+                                                </select>
+                                            </div>
+                                            <div style="margin-bottom: 10px;">
+                                                <label style="display: block; margin-bottom: 5px; font-weight: bold;">Комментарий</label>
+                                                <textarea id="review-edit-comment-${review.review_id}" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
+                                            </div>
+                                            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                                                <button type="button" onclick="window.cancelEditReview('${review.review_id}')" class="btn btn-outline" style="padding: 6px 12px; font-size: 0.9rem;">Отмена</button>
+                                                <button type="button" onclick="window.saveEditReview('${review.review_id}')" class="btn btn-primary" style="padding: 6px 12px; font-size: 0.9rem;">Сохранить</button>
+                                            </div>
                                         </div>
-                                        <p style="margin: 0; line-height: 1.5; color: #34495e; white-space: pre-wrap; font-size: 0.95rem;">${review.comment}</p>
+                                        ` : ''}
                                     </div>
-                                `).join('')
+                                `;
+                                }).join('')
                             }
                         </div>
                     </div>
@@ -339,6 +379,62 @@ window.router.register('profile', async function(props) {
         const formEl = document.getElementById('inline-review-form-profile');
         if (formEl) {
             formEl.style.display = formEl.style.display === 'none' ? 'block' : 'none';
+        }
+    };
+
+    window.startEditReview = function(reviewId) {
+        const card = document.getElementById('review-card-' + reviewId);
+        if (!card) return;
+        const staticBlock = card.querySelector('.review-card-static');
+        const formEl = document.getElementById('review-edit-form-' + reviewId);
+        const commentEl = document.getElementById('review-comment-' + reviewId);
+        const ratingSelect = document.getElementById('review-edit-rating-' + reviewId);
+        const commentTextarea = document.getElementById('review-edit-comment-' + reviewId);
+        if (!staticBlock || !formEl || !commentTextarea || !ratingSelect) return;
+        ratingSelect.value = card.getAttribute('data-rating') || '5';
+        commentTextarea.value = commentEl ? commentEl.textContent : '';
+        staticBlock.style.display = 'none';
+        formEl.style.display = 'block';
+    };
+
+    window.cancelEditReview = function(reviewId) {
+        const card = document.getElementById('review-card-' + reviewId);
+        if (!card) return;
+        const staticBlock = card.querySelector('.review-card-static');
+        const formEl = document.getElementById('review-edit-form-' + reviewId);
+        if (staticBlock) staticBlock.style.display = '';
+        if (formEl) formEl.style.display = 'none';
+    };
+
+    window.saveEditReview = async function(reviewId) {
+        const card = document.getElementById('review-card-' + reviewId);
+        if (!card) return;
+        const targetUserId = card.getAttribute('data-target-user-id');
+        const ratingEl = document.getElementById('review-edit-rating-' + reviewId);
+        const commentEl = document.getElementById('review-edit-comment-' + reviewId);
+        if (!targetUserId || !ratingEl || !commentEl) return;
+        const rating = parseInt(ratingEl.value, 10);
+        const comment = commentEl.value.trim();
+        if (isNaN(rating) || rating < 1 || rating > 5) {
+            window.utils.showToast('Выберите рейтинг от 1 до 5', 'warning');
+            return;
+        }
+        if (comment.length < 5) {
+            window.utils.showToast('Комментарий слишком короткий (минимум 5 символов)', 'warning');
+            return;
+        }
+        try {
+            await window.api.updateProfileReview(targetUserId, reviewId, rating, comment);
+            window.utils.showToast('Отзыв обновлён', 'success');
+            if (window.profileState && window.profileState.data) {
+                const uid = window.profileState.data.user_id;
+                const reviewsResp = await window.api.getProfileReviews(uid);
+                window.profileState.reviews = reviewsResp.data || reviewsResp;
+                window.renderProfileView();
+            }
+        } catch (error) {
+            console.error('Error updating review:', error);
+            window.utils.showToast(error.message || 'Ошибка при сохранении отзыва', 'error');
         }
     };
 
