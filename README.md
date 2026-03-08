@@ -10,6 +10,8 @@
 
 **Живая демо-версия доступна по адресу:**  
 👉 **[https://dronov-dmitry.github.io/open-lance](https://dronov-dmitry.github.io/open-lance)**
+**Видео описание**
+👉 **[https://youtu.be/lEO2ZJ0XY9Y](https://youtu.be/lEO2ZJ0XY9Y)**
 
 Вы можете протестировать все функции платформы прямо сейчас!
 Все облачные сервисы, которые использует приложение бесплатны!
