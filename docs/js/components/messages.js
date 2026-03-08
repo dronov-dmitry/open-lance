@@ -39,6 +39,7 @@ window.router.register('messages', async () => {
             let html = '<div class="messages-list">';
             for (const msg of messages) {
                 const partnerName = msg.related_user.name || 'Без имени';
+                const partnerId = tab === 'inbox' ? msg.sender_id : msg.receiver_id;
                 const roleBadge = msg.related_user.role === 'ADMIN' ? '<span class="badge admin" style="font-size: 0.7rem; padding: 2px 5px;">Админ</span>' : '';
                 const dateStr = new Date(msg.created_at).toLocaleString('ru-RU', { 
                     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' 
@@ -48,7 +49,7 @@ window.router.register('messages', async () => {
                 html += `
                     <div class="message-card card ${isUnread ? 'unread' : ''}" style="${isUnread ? 'border-left: 4px solid var(--primary-color); background: rgba(var(--primary-rgb), 0.03);' : ''}">
                         <div class="message-header" style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px;">
-                            <strong>${partnerName} ${roleBadge}</strong>
+                            <strong><a href="#" data-profile-id="${partnerId}" class="message-author-link">${partnerName}</a> ${roleBadge}</strong>
                             <span style="font-size: 0.8rem; color: #666;">${dateStr}</span>
                         </div>
                         <div class="message-content" style="white-space: pre-wrap; margin-bottom: 10px; color: var(--text-color);">${msg.content}</div>
