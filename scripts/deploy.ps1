@@ -10,7 +10,7 @@ param(
 chcp 65001 | Out-Null
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
-$PSDefaultParameterValues['*:Encoding'] = 'utf8'
+$PSDefaultParameterValues["*:Encoding"] = "utf8"
 
 # Error handling
 $ErrorActionPreference = "Stop"
@@ -201,8 +201,8 @@ function Get-DeploymentConfig {
         Write-Info "Found existing configuration in .env"
         $envContent = Get-Content $configFile -Raw
 
-        $envData = Get-Content $configFile | Where-Object { $_ -match '=' -and $_ -notmatch '^#' } | ForEach-Object {
-            $parts = $_ -split '=', 2
+        $envData = Get-Content $configFile | Where-Object { $_ -match "=" -and $_ -notmatch "^\s*#" } | ForEach-Object {
+            $parts = $_ -split "=", 2
             @{ ($parts[0].Trim()) = ($parts[1].Trim()) }
         }
 
@@ -235,12 +235,14 @@ function Get-DeploymentConfig {
         $script:MONGODB_DATABASE = Get-EnvVar 'MONGODB_DATABASE'
         $script:FRONTEND_URL = Get-EnvVar 'FRONTEND_URL'
         $script:JWT_SECRET = Get-EnvVar 'JWT_SECRET'
-        $script:API_URL = Get-EnvVar 'API_URL'
+        $rawApi = Get-EnvVar 'API_URL'; $script:API_URL = if ($rawApi) { ($rawApi -replace "[\r\n]+", "").Trim() } else { $null }
         $script:MONGODB_API_KEY = Get-EnvVar 'MONGODB_API_KEY'
         $script:EMAILJS_PUBLIC_KEY = Get-EnvVar 'EMAILJS_PUBLIC_KEY'
         $script:EMAILJS_SERVICE_ID = Get-EnvVar 'EMAILJS_SERVICE_ID'
         $script:EMAILJS_TEMPLATE_ID = Get-EnvVar 'EMAILJS_TEMPLATE_ID'
         $script:EMAILJS_PRIVATE_KEY = Get-EnvVar 'EMAILJS_PRIVATE_KEY'
+        $rawSecret = Get-EnvVar 'TURNSTILE_SECRET_KEY'; $script:TURNSTILE_SECRET_KEY = if ($rawSecret) { ($rawSecret -replace "[\r\n]+", "").Trim() } else { $null }
+        $rawSite = Get-EnvVar 'TURNSTILE_SITE_KEY'; $script:TURNSTILE_SITE_KEY = if ($rawSite) { ($rawSite -replace "[\r\n]+", "").Trim() } else { $null }
 
         $hasConfig = -not [string]::IsNullOrWhiteSpace($script:MONGODB_URI)
 
@@ -254,29 +256,45 @@ function Get-DeploymentConfig {
                 foreach ($item in $envData) { foreach ($key in $item.Keys) { $newConfig[$key] = $item[$key] } }
 
                 if ($script:EnvPrefix -eq "PROD_") {
-                    $newConfig['Environment'] = "`"$($script:Environment)`""
-                    if ($script:MONGODB_URI) { $newConfig['MONGODB_URI'] = "`"$script:MONGODB_URI`"" }
-                    if ($script:MONGODB_DATABASE) { $newConfig['MONGODB_DATABASE'] = "`"$script:MONGODB_DATABASE`"" }
-                    if ($script:FRONTEND_URL) { $newConfig['FRONTEND_URL'] = "`"$script:FRONTEND_URL`"" }
-                    if ($script:JWT_SECRET) { $newConfig['JWT_SECRET'] = "`"$script:JWT_SECRET`"" }
-                    if ($script:MONGODB_API_KEY) { $newConfig['MONGODB_API_KEY'] = "`"$script:MONGODB_API_KEY`"" }
-                    if ($script:EMAILJS_PUBLIC_KEY) { $newConfig['EMAILJS_PUBLIC_KEY'] = "`"$script:EMAILJS_PUBLIC_KEY`"" }
-                    if ($script:EMAILJS_SERVICE_ID) { $newConfig['EMAILJS_SERVICE_ID'] = "`"$script:EMAILJS_SERVICE_ID`"" }
-                    if ($script:EMAILJS_TEMPLATE_ID) { $newConfig['EMAILJS_TEMPLATE_ID'] = "`"$script:EMAILJS_TEMPLATE_ID`"" }
-                    if ($script:EMAILJS_PRIVATE_KEY) { $newConfig['EMAILJS_PRIVATE_KEY'] = "`"$script:EMAILJS_PRIVATE_KEY`"" }
+                    $newConfig["Environment"] = "`"$($script:Environment)`""
+                    if ($script:MONGODB_URI) { $newConfig["MONGODB_URI"] = "`"$script:MONGODB_URI`"" }
+                    if ($script:MONGODB_DATABASE) { $newConfig["MONGODB_DATABASE"] = "`"$script:MONGODB_DATABASE`"" }
+                    if ($script:FRONTEND_URL) { $newConfig["FRONTEND_URL"] = "`"$script:FRONTEND_URL`"" }
+                    if ($script:JWT_SECRET) { $newConfig["JWT_SECRET"] = "`"$script:JWT_SECRET`"" }
+                    if ($script:MONGODB_API_KEY) { $newConfig["MONGODB_API_KEY"] = "`"$script:MONGODB_API_KEY`"" }
+                    if ($script:EMAILJS_PUBLIC_KEY) { $newConfig["EMAILJS_PUBLIC_KEY"] = "`"$script:EMAILJS_PUBLIC_KEY`"" }
+                    if ($script:EMAILJS_SERVICE_ID) { $newConfig["EMAILJS_SERVICE_ID"] = "`"$script:EMAILJS_SERVICE_ID`"" }
+                    if ($script:EMAILJS_TEMPLATE_ID) { $newConfig["EMAILJS_TEMPLATE_ID"] = "`"$script:EMAILJS_TEMPLATE_ID`"" }
+                    if ($script:EMAILJS_PRIVATE_KEY) { $newConfig["EMAILJS_PRIVATE_KEY"] = "`"$script:EMAILJS_PRIVATE_KEY`"" }
+                    if ($null -ne $script:TURNSTILE_SECRET_KEY) { $newConfig["TURNSTILE_SECRET_KEY"] = "`"$script:TURNSTILE_SECRET_KEY`"" }
+                    if ($null -ne $script:TURNSTILE_SITE_KEY) { $newConfig["TURNSTILE_SITE_KEY"] = "`"$script:TURNSTILE_SITE_KEY`"" }
+                }
+                elseif ($script:EnvPrefix -eq "DEV_") {
+                    $newConfig["Environment"] = "`"$($script:Environment)`""
+                    if ($script:MONGODB_URI) { $newConfig["MONGODB_URI"] = "`"$script:MONGODB_URI`"" }
+                    if ($script:MONGODB_DATABASE) { $newConfig["MONGODB_DATABASE"] = "`"$script:MONGODB_DATABASE`"" }
+                    if ($script:FRONTEND_URL) { $newConfig["FRONTEND_URL"] = "`"$script:FRONTEND_URL`"" }
+                    if ($script:JWT_SECRET) { $newConfig["JWT_SECRET"] = "`"$script:JWT_SECRET`"" }
+                    if ($script:MONGODB_API_KEY) { $newConfig["MONGODB_API_KEY"] = "`"$script:MONGODB_API_KEY`"" }
+                    if ($script:EMAILJS_PUBLIC_KEY) { $newConfig["EMAILJS_PUBLIC_KEY"] = "`"$script:EMAILJS_PUBLIC_KEY`"" }
+                    if ($script:EMAILJS_SERVICE_ID) { $newConfig["EMAILJS_SERVICE_ID"] = "`"$script:EMAILJS_SERVICE_ID`"" }
+                    if ($script:EMAILJS_TEMPLATE_ID) { $newConfig["EMAILJS_TEMPLATE_ID"] = "`"$script:EMAILJS_TEMPLATE_ID`"" }
+                    if ($script:EMAILJS_PRIVATE_KEY) { $newConfig["EMAILJS_PRIVATE_KEY"] = "`"$script:EMAILJS_PRIVATE_KEY`"" }
+                    if ($null -ne $script:TURNSTILE_SECRET_KEY) { $newConfig["TURNSTILE_SECRET_KEY"] = "`"$script:TURNSTILE_SECRET_KEY`"" }
+                    if ($null -ne $script:TURNSTILE_SITE_KEY) { $newConfig["TURNSTILE_SITE_KEY"] = "`"$script:TURNSTILE_SITE_KEY`"" }
                 }
 
                 $configContent = "# Open-Lance Deployment Configuration v3.0`n`n"
                 $configContent += "### Active Configuration (Used by Backend) ###`n"
-                foreach ($key in $newConfig.Keys | Where-Object { $_ -notmatch '^(DEV_|PROD_)' } | Sort-Object) {
+                foreach ($key in $newConfig.Keys | Where-Object { $_ -notmatch "^(DEV_|PROD_)" } | Sort-Object) {
                     $configContent += "$key=$($newConfig[$key])`n"
                 }
                 $configContent += "`n### DEVELOPMENT Profile ###`n"
-                foreach ($key in $newConfig.Keys | Where-Object { $_ -match '^DEV_' } | Sort-Object) {
+                foreach ($key in $newConfig.Keys | Where-Object { $_ -match "^DEV_" } | Sort-Object) {
                     $configContent += "$key=$($newConfig[$key])`n"
                 }
                 $configContent += "`n### PRODUCTION Profile ###`n"
-                foreach ($key in $newConfig.Keys | Where-Object { $_ -match '^PROD_' } | Sort-Object) {
+                foreach ($key in $newConfig.Keys | Where-Object { $_ -match "^PROD_" } | Sort-Object) {
                     $configContent += "$key=$($newConfig[$key])`n"
                 }
                 $configContent | Out-File -FilePath $configFile -Encoding UTF8
@@ -304,6 +322,8 @@ function Get-DeploymentConfig {
         $script:EMAILJS_SERVICE_ID = $null
         $script:EMAILJS_TEMPLATE_ID = $null
         $script:EMAILJS_PRIVATE_KEY = $null
+        $script:TURNSTILE_SECRET_KEY = $null
+        $script:TURNSTILE_SITE_KEY = $null
         Set-DeploymentConfig
     }
     else {
@@ -317,7 +337,7 @@ function Set-DeploymentConfig {
     # MongoDB Atlas
     Write-Host ""
     Write-Host "MongoDB Atlas Configuration Required!" -ForegroundColor Yellow
-    Write-Host "If you haven't set up MongoDB Atlas yet, see: DEPLOYMENT.md" -ForegroundColor Gray
+    Write-Host "If you have not set up MongoDB Atlas yet, see: DEPLOYMENT.md" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Example Connection URI format:" -ForegroundColor Cyan
     Write-Host "  mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/" -ForegroundColor Gray
@@ -400,6 +420,22 @@ function Set-DeploymentConfig {
         Write-Host "[INFO] EmailJS skipped - using fallback mode (links in logs)" -ForegroundColor Cyan
     }
 
+    # Cloudflare Turnstile (captcha при логине)
+    Write-Host ""
+    Write-Host "Cloudflare Turnstile (captcha on login)" -ForegroundColor Yellow
+    Write-Host "  Secret Key from Cloudflare Dashboard -> Turnstile -> your widget." -ForegroundColor Gray
+    Write-Host "  Empty = captcha disabled." -ForegroundColor Gray
+    $script:TURNSTILE_SECRET_KEY = Read-Host "TURNSTILE_SECRET_KEY (leave empty to disable captcha)"
+    if ([string]::IsNullOrWhiteSpace($script:TURNSTILE_SECRET_KEY)) {
+        $script:TURNSTILE_SECRET_KEY = ""
+        Write-Host "[INFO] Turnstile skipped - login without captcha" -ForegroundColor Cyan
+    } else {
+        Write-Host "[OK] Turnstile secret will be set" -ForegroundColor Green
+    }
+    Write-Host "  Site Key (public, for frontend) from same Turnstile widget." -ForegroundColor Gray
+    $rawSiteKey = Read-Host "TURNSTILE_SITE_KEY (leave empty if captcha disabled)"
+    $script:TURNSTILE_SITE_KEY = if ([string]::IsNullOrWhiteSpace($rawSiteKey)) { "" } else { ($rawSiteKey -replace "[\r\n]+", "").Trim() }
+
     # Backend API URL (PRODUCTION only - known after first deploy)
     Set-Variable -Name API_URL -Value "" -Scope Script
     if ($script:EnvPrefix -eq "PROD_") {
@@ -417,29 +453,35 @@ function Set-DeploymentConfig {
 
     # Generate JWT Secret
     Write-Info "Generating JWT secret..."
-    $script:JWT_SECRET = & node -e 'console.log(require(\"crypto\").randomBytes(32).toString(\"hex\"))'
+    $jwtScript = Join-Path $env:TEMP "deploy-jwt-$(Get-Random).js"
+    $jsCode = "console.log(require(" + [char]39 + "crypto" + [char]39 + ").randomBytes(32).toString(" + [char]39 + "hex" + [char]39 + "));"
+    Set-Content -Path $jwtScript -Value $jsCode -Encoding UTF8 -NoNewline
+    $script:JWT_SECRET = ( & node $jwtScript ).ToString().Trim()
+    Remove-Item $jwtScript -Force -ErrorAction SilentlyContinue
 
     # Save configuration
     $newConfig = @{}
     $envDataPath = Join-Path $ProjectRoot ".env"
     if (Test-Path $envDataPath) {
-        Get-Content $envDataPath | Where-Object { $_ -match '=' -and $_ -notmatch '^#' } | ForEach-Object {
-            $parts = $_ -split '=', 2
+        Get-Content $envDataPath | Where-Object { $_ -match "=" -and $_ -notmatch "^\s*#" } | ForEach-Object {
+            $parts = $_ -split "=", 2
             $newConfig[($parts[0].Trim())] = ($parts[1].Trim())
         }
     }
 
     # Update unprefixed (active) config
-    $newConfig['Environment'] = "`"$Environment`""
-    if ($MONGODB_URI) { $newConfig['MONGODB_URI'] = "`"$MONGODB_URI`"" }
-    if ($MONGODB_DATABASE) { $newConfig['MONGODB_DATABASE'] = "`"$MONGODB_DATABASE`"" }
-    if ($FRONTEND_URL) { $newConfig['FRONTEND_URL'] = "`"$FRONTEND_URL`"" }
-    if ($JWT_SECRET) { $newConfig['JWT_SECRET'] = "`"$JWT_SECRET`"" }
-    if ($MONGODB_API_KEY) { $newConfig['MONGODB_API_KEY'] = "`"$MONGODB_API_KEY`"" }
-    if ($EMAILJS_PUBLIC_KEY) { $newConfig['EMAILJS_PUBLIC_KEY'] = "`"$EMAILJS_PUBLIC_KEY`"" }
-    if ($EMAILJS_SERVICE_ID) { $newConfig['EMAILJS_SERVICE_ID'] = "`"$EMAILJS_SERVICE_ID`"" }
-    if ($EMAILJS_TEMPLATE_ID) { $newConfig['EMAILJS_TEMPLATE_ID'] = "`"$EMAILJS_TEMPLATE_ID`"" }
-    if ($EMAILJS_PRIVATE_KEY) { $newConfig['EMAILJS_PRIVATE_KEY'] = "`"$EMAILJS_PRIVATE_KEY`"" }
+    $newConfig["Environment"] = "`"$Environment`""
+    if ($MONGODB_URI) { $newConfig["MONGODB_URI"] = "`"$MONGODB_URI`"" }
+    if ($MONGODB_DATABASE) { $newConfig["MONGODB_DATABASE"] = "`"$MONGODB_DATABASE`"" }
+    if ($FRONTEND_URL) { $newConfig["FRONTEND_URL"] = "`"$FRONTEND_URL`"" }
+    if ($JWT_SECRET) { $newConfig["JWT_SECRET"] = "`"$JWT_SECRET`"" }
+    if ($MONGODB_API_KEY) { $newConfig["MONGODB_API_KEY"] = "`"$MONGODB_API_KEY`"" }
+    if ($EMAILJS_PUBLIC_KEY) { $newConfig["EMAILJS_PUBLIC_KEY"] = "`"$EMAILJS_PUBLIC_KEY`"" }
+    if ($EMAILJS_SERVICE_ID) { $newConfig["EMAILJS_SERVICE_ID"] = "`"$EMAILJS_SERVICE_ID`"" }
+    if ($EMAILJS_TEMPLATE_ID) { $newConfig["EMAILJS_TEMPLATE_ID"] = "`"$EMAILJS_TEMPLATE_ID`"" }
+    if ($EMAILJS_PRIVATE_KEY) { $newConfig["EMAILJS_PRIVATE_KEY"] = "`"$EMAILJS_PRIVATE_KEY`"" }
+    if ($script:TURNSTILE_SECRET_KEY) { $newConfig["TURNSTILE_SECRET_KEY"] = "`"$script:TURNSTILE_SECRET_KEY`"" }
+    if ($script:TURNSTILE_SITE_KEY) { $newConfig["TURNSTILE_SITE_KEY"] = "`"$script:TURNSTILE_SITE_KEY`"" }
 
     # Save prefixed config for persistence
     $newConfig["$($script:EnvPrefix)Environment"] = "`"$Environment`""
@@ -452,19 +494,37 @@ function Set-DeploymentConfig {
     if ($EMAILJS_SERVICE_ID) { $newConfig["$($script:EnvPrefix)EMAILJS_SERVICE_ID"] = "`"$EMAILJS_SERVICE_ID`"" }
     if ($EMAILJS_TEMPLATE_ID) { $newConfig["$($script:EnvPrefix)EMAILJS_TEMPLATE_ID"] = "`"$EMAILJS_TEMPLATE_ID`"" }
     if ($EMAILJS_PRIVATE_KEY) { $newConfig["$($script:EnvPrefix)EMAILJS_PRIVATE_KEY"] = "`"$EMAILJS_PRIVATE_KEY`"" }
+    if ($null -ne $script:TURNSTILE_SECRET_KEY) { $newConfig["TURNSTILE_SECRET_KEY"] = "`"$script:TURNSTILE_SECRET_KEY`"" }
+    if ($null -ne $script:TURNSTILE_SITE_KEY) { $newConfig["TURNSTILE_SITE_KEY"] = "`"$script:TURNSTILE_SITE_KEY`"" }
+    # DEV and PROD Turnstile keys stored separately; active one loaded by profile choice
+    $existingDevTurnstile = $newConfig["DEV_TURNSTILE_SECRET_KEY"]
+    $existingProdTurnstile = $newConfig["PROD_TURNSTILE_SECRET_KEY"]
+    $existingDevTurnstileSite = $newConfig["DEV_TURNSTILE_SITE_KEY"]
+    $existingProdTurnstileSite = $newConfig["PROD_TURNSTILE_SITE_KEY"]
+    if ($script:EnvPrefix -eq "PROD_") {
+        $newConfig["PROD_TURNSTILE_SECRET_KEY"] = "`"$script:TURNSTILE_SECRET_KEY`""
+        if ($existingDevTurnstile) { $newConfig["DEV_TURNSTILE_SECRET_KEY"] = $existingDevTurnstile } else { $newConfig["DEV_TURNSTILE_SECRET_KEY"] = "`"`"" }
+        $newConfig["PROD_TURNSTILE_SITE_KEY"] = "`"$script:TURNSTILE_SITE_KEY`""
+        if ($existingDevTurnstileSite) { $newConfig["DEV_TURNSTILE_SITE_KEY"] = $existingDevTurnstileSite } else { $newConfig["DEV_TURNSTILE_SITE_KEY"] = "`"`"" }
+    } else {
+        $newConfig["DEV_TURNSTILE_SECRET_KEY"] = "`"$script:TURNSTILE_SECRET_KEY`""
+        if ($existingProdTurnstile) { $newConfig["PROD_TURNSTILE_SECRET_KEY"] = $existingProdTurnstile } else { $newConfig["PROD_TURNSTILE_SECRET_KEY"] = "`"`"" }
+        $newConfig["DEV_TURNSTILE_SITE_KEY"] = "`"$script:TURNSTILE_SITE_KEY`""
+        if ($existingProdTurnstileSite) { $newConfig["PROD_TURNSTILE_SITE_KEY"] = $existingProdTurnstileSite } else { $newConfig["PROD_TURNSTILE_SITE_KEY"] = "`"`"" }
+    }
     if ($script:API_URL) { $newConfig["$($script:EnvPrefix)API_URL"] = "`"$script:API_URL`"" }
 
     $configContent = "# Open-Lance Deployment Configuration v3.0`n`n"
     $configContent += "### Active Configuration (Used by Backend) ###`n"
-    foreach ($key in $newConfig.Keys | Where-Object { $_ -notmatch '^(DEV_|PROD_)' } | Sort-Object) {
+    foreach ($key in $newConfig.Keys | Where-Object { $_ -notmatch "^(DEV_|PROD_)" } | Sort-Object) {
         $configContent += "$key=$($newConfig[$key])`n"
     }
     $configContent += "`n### DEVELOPMENT Profile ###`n"
-    foreach ($key in $newConfig.Keys | Where-Object { $_ -match '^DEV_' } | Sort-Object) {
+    foreach ($key in $newConfig.Keys | Where-Object { $_ -match "^DEV_" } | Sort-Object) {
         $configContent += "$key=$($newConfig[$key])`n"
     }
     $configContent += "`n### PRODUCTION Profile ###`n"
-    foreach ($key in $newConfig.Keys | Where-Object { $_ -match '^PROD_' } | Sort-Object) {
+    foreach ($key in $newConfig.Keys | Where-Object { $_ -match "^PROD_" } | Sort-Object) {
         $configContent += "$key=$($newConfig[$key])`n"
     }
 
@@ -500,6 +560,9 @@ function Deploy-Backend {
 MONGODB_URI="$MONGODB_URI"
 JWT_SECRET="$JWT_SECRET"
 "@
+        if (-not [string]::IsNullOrWhiteSpace($script:TURNSTILE_SECRET_KEY)) {
+            $devVarsContent += "`nTURNSTILE_SECRET_KEY=`"$($script:TURNSTILE_SECRET_KEY)`""
+        }
         $devVarsContent | Out-File -FilePath ".dev.vars" -Encoding UTF8
         Write-Host "[OK] Local secrets configured in .dev.vars" -ForegroundColor Green
 
@@ -632,6 +695,22 @@ JWT_SECRET="$JWT_SECRET"
         Write-Host "[SKIP] EMAILJS_PRIVATE_KEY not configured (skipping)" -ForegroundColor Gray
     }
 
+    # Turnstile (captcha)
+    if (-not [string]::IsNullOrWhiteSpace($script:TURNSTILE_SECRET_KEY)) {
+        Write-Info "Setting TURNSTILE_SECRET_KEY secret..."
+        $tempTurnstileSecret = Join-Path $env:TEMP "turnstile_secret.txt"
+        [IO.File]::WriteAllText($tempTurnstileSecret, $script:TURNSTILE_SECRET_KEY)
+        $secretResultTurnstile = cmd.exe /c "wrangler secret put TURNSTILE_SECRET_KEY < ""$tempTurnstileSecret""" 2>&1
+        Remove-Item $tempTurnstileSecret -ErrorAction SilentlyContinue
+        if ($secretResultTurnstile -match "error|failed" -and $secretResultTurnstile -notmatch "Created|Updated") {
+            Write-WarningMsg "Failed to set TURNSTILE_SECRET_KEY secret"
+        } else {
+            Write-Host "[OK] TURNSTILE_SECRET_KEY secret set" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "[SKIP] TURNSTILE_SECRET_KEY not configured (login captcha disabled)" -ForegroundColor Gray
+    }
+
     if ($hasEmailJS) {
         Write-Host ""
         Write-Success "All EmailJS secrets have been installed to Cloudflare Workers"
@@ -680,25 +759,25 @@ JWT_SECRET="$JWT_SECRET"
     $configFile = Join-Path $ProjectRoot ".env"
     $rebuildConfig = @{}
     if (Test-Path $configFile) {
-        Get-Content $configFile | Where-Object { $_ -match '=' -and $_ -notmatch '^#' } | ForEach-Object {
-            $parts = $_ -split '=', 2
+        Get-Content $configFile | Where-Object { $_ -match "=" -and $_ -notmatch "^\s*#" } | ForEach-Object {
+            $parts = $_ -split "=", 2
             $rebuildConfig[($parts[0].Trim())] = ($parts[1].Trim())
         }
     }
-    $rebuildConfig['API_URL'] = "`"$API_URL`""
-    $rebuildConfig['PROD_API_URL'] = "`"$API_URL`""
+    $rebuildConfig["API_URL"] = "`"$API_URL`""
+    $rebuildConfig["PROD_API_URL"] = "`"$API_URL`""
 
     $configContent = "# Open-Lance Deployment Configuration v3.0`n`n"
     $configContent += "### Active Configuration (Used by Backend) ###`n"
-    foreach ($key in $rebuildConfig.Keys | Where-Object { $_ -notmatch '^(DEV_|PROD_)' } | Sort-Object) {
+    foreach ($key in $rebuildConfig.Keys | Where-Object { $_ -notmatch "^(DEV_|PROD_)" } | Sort-Object) {
         $configContent += "$key=$($rebuildConfig[$key])`n"
     }
     $configContent += "`n### DEVELOPMENT Profile ###`n"
-    foreach ($key in $rebuildConfig.Keys | Where-Object { $_ -match '^DEV_' } | Sort-Object) {
+    foreach ($key in $rebuildConfig.Keys | Where-Object { $_ -match "^DEV_" } | Sort-Object) {
         $configContent += "$key=$($rebuildConfig[$key])`n"
     }
     $configContent += "`n### PRODUCTION Profile ###`n"
-    foreach ($key in $rebuildConfig.Keys | Where-Object { $_ -match '^PROD_' } | Sort-Object) {
+    foreach ($key in $rebuildConfig.Keys | Where-Object { $_ -match "^PROD_" } | Sort-Object) {
         $configContent += "$key=$($rebuildConfig[$key])`n"
     }
     $configContent | Out-File -FilePath $configFile -Encoding UTF8
@@ -717,40 +796,36 @@ function Set-FrontendConfig {
 
     Write-Info "Updating frontend configuration..."
 
-    $configContent = @"
-// Configuration for Open-Lance v3.0 (Cloudflare Workers + MongoDB Atlas)
-const CONFIG = {
-    ENV: '$Environment',
-    API: {
-        development: { baseURL: '$API_URL' },
-        production: { baseURL: '$API_URL' }
-    },
-    SETTINGS: {
-        maxContactLinks: 10,
-        defaultPageSize: 20,
-        retryAttempts: 3,
-        retryDelay: 1000
-    }
-};
+    if ($null -eq $script:TURNSTILE_SITE_KEY) { $script:TURNSTILE_SITE_KEY = "" }
+    $turnstileSiteKeyVal = ($script:TURNSTILE_SITE_KEY -replace "[\r\n]+", "").Trim()
+    $envVal = ($Environment -replace "[\r\n]+", "").Trim()
+    $apiUrlVal = ($API_URL -replace "[\r\n]+", "").Trim()
 
-function getConfig() {
-    const env = CONFIG.ENV || 'development';
-    let fallbackURL = '$API_URL';
-    if (env === 'local' || env === 'development') {
-        fallbackURL = 'http://127.0.0.1:8787';
-    }
-    const apiConfig = CONFIG.API[env] || { baseURL: fallbackURL };
-    return {
-        apiBaseURL: apiConfig.baseURL,
-        ...CONFIG.SETTINGS
-    };
-}
-
-window.APP_CONFIG = getConfig();
-"@
+    $configLines = @(
+    "// Configuration for Open-Lance v3.0 (Cloudflare Workers + MongoDB Atlas)",
+    "const CONFIG = {",
+    "    ENV: " + [char]39 + $envVal + [char]39 + ",",
+    "    API: {",
+    "        development: { baseURL: " + [char]39 + $apiUrlVal + [char]39 + " },",
+    "        production: { baseURL: " + [char]39 + $apiUrlVal + [char]39 + " }",
+    "    },",
+    "    SETTINGS: { maxContactLinks: 10, defaultPageSize: 20, retryAttempts: 3, retryDelay: 1000 },",
+    "    turnstileSiteKey: " + [char]39 + $turnstileSiteKeyVal + [char]39 + "",
+    "};",
+    "function getConfig() {",
+    "    const env = CONFIG.ENV || " + [char]39 + "development" + [char]39 + ";",
+    "    let fallbackURL = " + [char]39 + $apiUrlVal + [char]39 + ";",
+    "    if (env === " + [char]39 + "local" + [char]39 + " || env === " + [char]39 + "development" + [char]39 + ") fallbackURL = " + [char]39 + "http://127.0.0.1:8787" + [char]39 + ";",
+    "    const apiConfig = CONFIG.API[env] || { baseURL: fallbackURL };",
+    "    return { apiBaseURL: apiConfig.baseURL, ...CONFIG.SETTINGS, turnstileSiteKey: CONFIG.turnstileSiteKey || " + [char]39 + [char]39 + " };",
+    "}",
+    "window.APP_CONFIG = getConfig();"
+)
+    $configContent = $configLines -join "`n"
 
     $configPath = Join-Path $ProjectRoot "docs\js\config.js"
-    $configContent | Out-File -FilePath $configPath -Encoding UTF8
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($configPath, $configContent, $utf8NoBom)
 
     Write-Success "Frontend configured successfully"
 }
@@ -827,7 +902,7 @@ function Write-Summary {
     Write-Host ""
     Write-Host "4. Deploy to Cloudflare Pages (or GitHub Pages):" -ForegroundColor Cyan
     Write-Host "   git add ." -ForegroundColor Gray
-    Write-Host "   git commit -m 'Deploy Open-Lance v3.0'" -ForegroundColor Gray
+    Write-Host "   git commit -m `"Deploy Open-Lance v3.0`"" -ForegroundColor Gray
     Write-Host "   git push origin main" -ForegroundColor Gray
     Write-Host "   Or use: wrangler pages deploy docs" -ForegroundColor Gray
     Write-Host ""

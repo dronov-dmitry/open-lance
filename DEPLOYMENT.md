@@ -395,10 +395,64 @@ chmod +x scripts/deploy.sh
    - Проверьте логи Cloudflare Workers
    - Если все секреты установлены, должно быть сообщение `✅ All EmailJS secrets are configured`
 
+### 4.1.2. Настройка Cloudflare Turnstile (капча при входе)
+
+Приложение может показывать капчу Cloudflare Turnstile на странице входа, чтобы защититься от ботов. Для этого нужны **Site Key** (для фронтенда) и **Secret Key** (для бэкенда). Ниже — как получить **TURNSTILE_SECRET_KEY**.
+
+#### Шаг 1: Вход в Cloudflare
+
+1. Откройте [dash.cloudflare.com](https://dash.cloudflare.com/) и войдите в аккаунт.
+2. В левом меню выберите **Turnstile** (или перейдите по [dash.cloudflare.com/?to=/:account/turnstile](https://dash.cloudflare.com/) и найдите Turnstile в меню).
+
+#### Шаг 2: Создание виджета
+
+1. На странице Turnstile нажмите **"Add site"** (или **"Create"**).
+2. Заполните:
+   - **Site name**: например, `Open-Lance` или `open-lance-login`.
+   - **Domain**: укажите домен, где будет открываться сайт:
+     - для разработки: `localhost`;
+     - для GitHub Pages: `ваш-username.github.io`;
+     - для своего домена: ваш домен (например, `example.com`).
+   - Можно добавить несколько доменов по одному.
+3. **Widget Mode**: оставьте **Managed** (рекомендуется) или выберите **Non-interactive** при необходимости.
+4. Нажмите **"Create"**.
+
+#### Шаг 3: Получение ключей
+
+После создания виджета откроется страница с двумя ключами:
+
+| Ключ | Где использовать | Описание |
+|------|------------------|----------|
+| **Site Key** | Фронтенд (`docs/js/config.js` → `TURNSTILE_SITE_KEY`) | Публичный, показывается в коде страницы. |
+| **Secret Key** | Бэкенд (секрет `TURNSTILE_SECRET_KEY` в скрипте деплоя / Cloudflare) | Секретный, только на сервере. |
+
+**Как скопировать Secret Key (это и есть TURNSTILE_SECRET_KEY):**
+
+1. На странице виджета Turnstile найдите блок **"Secret Key"**.
+2. Нажмите **"Reveal"** или иконку копирования рядом с ключом.
+3. Скопируйте значение целиком (длинная строка символов).
+
+#### Шаг 4: Куда подставить TURNSTILE_SECRET_KEY
+
+- **При автоматическом деплое:** скрипт `deploy.ps1` спросит `TURNSTILE_SECRET_KEY`. Вставьте скопированный **Secret Key** (оставьте пустым, если капчу пока не используете).
+- **При ручном деплое:** сохраните ключ в секретах Worker (см. раздел [4.2. Ручной деплой](#42-ручной-деплой)).
+
+**Site Key** нужно прописать в конфиге фронтенда: откройте `docs/js/config.js` и задайте `TURNSTILE_SITE_KEY` (если в проекте используется отдельный конфиг для Turnstile) или укажите его в том месте, откуда фронтенд читает настройки виджета.
+
+#### Отключение капчи
+
+Если при запросе `TURNSTILE_SECRET_KEY` в скрипте деплоя оставить поле **пустым**, капча будет отключена и вход будет без Turnstile.
+
+#### Где посмотреть ключи позже
+
+1. [dash.cloudflare.com](https://dash.cloudflare.com/) → **Turnstile**.
+2. Выберите нужный виджет (сайт).
+3. **Site Key** и **Secret Key** отображаются на странице виджета (Secret Key может требовать нажатия **"Reveal"**).
+
 Скрипт выполнит:
 - ✅ Проверку зависимостей
 - ✅ Проверку аутентификации Cloudflare
-- ✅ Установку секретов (MONGODB_URI, JWT_SECRET, EMAILJS_PUBLIC_KEY, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID)
+- ✅ Установку секретов (MONGODB_URI, JWT_SECRET, EMAILJS_*, TURNSTILE_SECRET_KEY при необходимости)
 - ✅ Деплой Worker на Cloudflare
 - ✅ Обновление `docs/js/config.js` с URL Worker
 - ✅ Тестирование API
@@ -419,6 +473,8 @@ echo "ваш-jwt-secret" | wrangler secret put JWT_SECRET
 echo "ваш-emailjs-public-key" | wrangler secret put EMAILJS_PUBLIC_KEY
 echo "ваш-emailjs-service-id" | wrangler secret put EMAILJS_SERVICE_ID
 echo "ваш-emailjs-template-id" | wrangler secret put EMAILJS_TEMPLATE_ID
+# Капча при входе (необязательно; пусто = капча отключена):
+echo "ваш-turnstile-secret-key" | wrangler secret put TURNSTILE_SECRET_KEY
 
 # Деплой
 wrangler deploy
@@ -633,6 +689,7 @@ wrangler secret list
 - `MONGODB_URI`
 - `JWT_SECRET`
 - `ALLOWED_ORIGIN`
+- (по желанию) `TURNSTILE_SECRET_KEY` — если включена капча при входе (см. [4.1.2](#412-настройка-cloudflare-turnstile-капча-при-входе))
 
 **Проверка логов:**
 ```bash
@@ -781,7 +838,7 @@ GitHub Pages обновится автоматически через 1-2 мин
 - [ ] Workers.dev subdomain зарегистрирован
 - [ ] Wrangler CLI установлен и авторизован
 - [ ] Backend задеплоен успешно
-- [ ] Секреты установлены (MONGODB_URI, JWT_SECRET, ALLOWED_ORIGIN)
+- [ ] Секреты установлены (MONGODB_URI, JWT_SECRET, ALLOWED_ORIGIN; при необходимости TURNSTILE_SECRET_KEY)
 - [ ] Worker отвечает на `/health`
 - [ ] Frontend `config.js` обновлен с Worker URL
 - [ ] Проект загружен на GitHub

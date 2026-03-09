@@ -244,11 +244,10 @@ class APIService {
         });
     }
 
-    async login(email, password) {
-        return this.post('/auth/login', {
-            email,
-            password
-        });
+    async login(email, password, turnstileToken) {
+        const body = { email, password };
+        if (turnstileToken) body.turnstile_token = turnstileToken;
+        return this.post('/auth/login', body);
     }
 
     async changePassword(oldPassword, newPassword) {

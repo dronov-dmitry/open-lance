@@ -178,7 +178,45 @@ async function login(event) {
             };
         }
         
-        const { email, password } = body;
+        const { email, password, turnstile_token: turnstileToken } = body;
+
+        // Cloudflare Turnstile: проверка капчи, если задан секретный ключ
+        const TURNSTILE_SECRET = event.env?.TURNSTILE_SECRET_KEY || process.env?.TURNSTILE_SECRET_KEY;
+        if (TURNSTILE_SECRET) {
+            if (!turnstileToken || typeof turnstileToken !== 'string' || !turnstileToken.trim()) {
+                return {
+                    statusCode: 400,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ error: 'Пройдите проверку (капча)' })
+                };
+            }
+            try {
+                const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        secret: TURNSTILE_SECRET,
+                        response: turnstileToken.trim()
+                    }).toString()
+                });
+                const verifyData = await verifyRes.json();
+                if (!verifyData.success) {
+                    console.log('[Login] Turnstile verify failed:', verifyData['error-codes']);
+                    return {
+                        statusCode: 400,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ error: 'Проверка не пройдена. Попробуйте ещё раз.' })
+                    };
+                }
+            } catch (turnstileErr) {
+                console.error('[Login] Turnstile verify error:', turnstileErr);
+                return {
+                    statusCode: 502,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ error: 'Ошибка проверки. Попробуйте позже.' })
+                };
+            }
+        }
 
         // Validate input
         if (!email || !validation.isValidEmail(email)) {
