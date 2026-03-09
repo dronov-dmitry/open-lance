@@ -131,6 +131,25 @@ window.auth = (function() {
             loginModal.classList.add('active');
         };
 
+        // Cloudflare Turnstile (captcha) — рендер при наличии ключа
+        const turnstileContainer = document.getElementById('turnstile-login-container');
+        if (turnstileContainer && window.APP_CONFIG && window.APP_CONFIG.turnstileSiteKey) {
+            function renderTurnstile() {
+                if (typeof window.turnstile !== 'undefined') {
+                    turnstileContainer.innerHTML = '';
+                    window.turnstileLoginWidgetId = window.turnstile.render(turnstileContainer, {
+                        sitekey: window.APP_CONFIG.turnstileSiteKey,
+                        theme: 'light'
+                    });
+                } else {
+                    setTimeout(renderTurnstile, 100);
+                }
+            }
+            renderTurnstile();
+        } else if (turnstileContainer) {
+            turnstileContainer.style.display = 'none';
+        }
+
         // Resend verification email handler
         const resendVerificationContainer = document.getElementById('resendVerificationContainer');
         const resendVerificationBtn = document.getElementById('resendVerificationBtn');
@@ -240,6 +259,14 @@ window.auth = (function() {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
 
+            const turnstileToken = window.APP_CONFIG && window.APP_CONFIG.turnstileSiteKey && typeof window.turnstile !== 'undefined' && window.turnstileLoginWidgetId != null
+                ? window.turnstile.getResponse(window.turnstileLoginWidgetId)
+                : '';
+            if (window.APP_CONFIG && window.APP_CONFIG.turnstileSiteKey && !turnstileToken) {
+                window.utils.showToast('Пожалуйста, пройдите проверку (капча)', 'warning');
+                return;
+            }
+
             // Hide resend container on new login attempt
             resendVerificationContainer.style.display = 'none';
             currentEmailForResend = '';
@@ -249,12 +276,15 @@ window.auth = (function() {
                 submitBtn.disabled = true;
                 submitBtn.textContent = 'Входим...';
 
-                const response = await window.api.login(email, password);
+                const response = await window.api.login(email, password, turnstileToken);
                 
                 if (response.token) {
                     login(response.token, response.user);
                     closeAllModals();
                     loginForm.reset();
+                    if (window.turnstileLoginWidgetId != null && typeof window.turnstile !== 'undefined') {
+                        window.turnstile.reset(window.turnstileLoginWidgetId);
+                    }
                     window.utils.showToast('Вы успешно вошли в систему!', 'success');
                     window.router.navigate('tasks');
                 } else {
@@ -262,6 +292,9 @@ window.auth = (function() {
                 }
             } catch (error) {
                 console.error('Login error:', error);
+                if (window.turnstileLoginWidgetId != null && typeof window.turnstile !== 'undefined') {
+                    window.turnstile.reset(window.turnstileLoginWidgetId);
+                }
                 const errorMessage = error.message || 'Ошибка входа. Проверьте данные.';
                 
                 // Check if error is about unverified email

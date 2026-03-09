@@ -378,13 +378,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 });
-// Handle global errors
+// Handle global errors (skip Turnstile widget errors to show a specific message)
 window.addEventListener('error', (event) => {
-    console.error('Global error:', event.error);
+    console.error('Global error:', event.error, event.message);
+    const msg = (event.error && event.error.message) ? String(event.error.message) : (event.message || '');
+    const isTurnstile = (event.error && (event.error.name === 'TurnstileError' || String(event.error.message || '').includes('Turnstile') || String(event.error.message || '').includes('400020'))) ||
+        (msg.includes('Turnstile') || msg.includes('400020'));
+    if (isTurnstile) {
+        var host = window.location.hostname || 'localhost';
+        window.utils.showToast('Капча Turnstile (400020): добавьте в виджет домен «' + host + '». Если открываете по 127.0.0.1 — добавьте и 127.0.0.1.', 'error', 10000);
+        event.preventDefault();
+        return true;
+    }
     window.utils.showToast('Произошла ошибка. Попробуйте обновить страницу.', 'error');
 });
-// Handle unhandled promise rejections
+// Handle unhandled promise rejections (skip Turnstile)
 window.addEventListener('unhandledrejection', (event) => {
     console.error('Unhandled promise rejection:', event.reason);
+    const isTurnstile = event.reason && (
+        (event.reason.name === 'TurnstileError') ||
+        (event.reason.message && String(event.reason.message).includes('Turnstile')) ||
+        (event.reason.message && String(event.reason.message).includes('400020'))
+    );
+    if (isTurnstile) {
+        window.utils.showToast('Капча Turnstile недоступна. Добавьте домен в Cloudflare: Turnstile -> ваш виджет -> Domains.', 'error', 8000);
+        event.preventDefault();
+        return;
+    }
     window.utils.showToast('Произошла ошибка при выполнении запроса.', 'error');
 });
