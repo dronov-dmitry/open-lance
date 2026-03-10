@@ -1,16 +1,18 @@
+// import { form_auth_message } from './messages.js';  // Именованный импорт
 // Tasks component
 window.router.register('tasks', async function() {
     if (!window.auth.isLoggedIn()) {
-        return `
-            <div class="empty-state">
-                <h3>Необходима авторизация</h3>
-                <p>Войдите в систему, чтобы просматривать список задач</p>
-								</br>
-                <button onclick="document.getElementById('loginModal').classList.add('active')" class="btn btn-primary">
-                    Войти
-                </button>
-            </div>
-        `;
+        // return `
+        //     <div class="empty-state">
+        //         <h3>Необходима авторизация</h3>
+        //         <p>Войдите в систему, чтобы просматривать список задач</p>
+				// 				</br>
+        //         <button onclick="document.getElementById('loginModal').classList.add('active')" class="btn btn-primary">
+        //             Войти
+        //         </button>
+        //     </div>
+        // `;
+				return window.form_auth_message("список задач");
     }
 
     try {

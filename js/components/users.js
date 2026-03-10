@@ -1,5 +1,5 @@
 // Users Component
-
+// import { form_auth_message } from './messages.js';  // Именованный импорт
 // Helper to decode JWT
 function parseJwt(token) {
     try {
@@ -102,16 +102,7 @@ window.submitUserReview = async function(userId) {
 
 window.router.register('users', async () => {
     if (!window.auth.isLoggedIn()) {
-        return `
-            <div class="empty-state">
-                <h3>Необходима авторизация</h3>
-                <p>Войдите в систему, чтобы просматривать список фрилансеров</p>
-								</br>
-                <button onclick="document.getElementById('loginModal').classList.add('active')" class="btn btn-primary">
-                    Войти
-                </button>
-            </div>
-        `;
+				return window.form_auth_message("список фрилансеров");
     }
 
     // Get filter from URL or use default
