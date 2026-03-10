@@ -306,8 +306,17 @@ async function handleRequest(request, env) {
         }
 
         if (path.match(/^\/tasks\/[^/]+\/match$/) && method === 'POST') {
-            event.pathParameters.id = path.split('/')[2];
+            event.pathParameters.taskId = path.split('/')[2];
             const result = await taskHandlers.matchWorker(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
+        if (path.match(/^\/tasks\/[^/]+\/complete$/) && method === 'POST') {
+            event.pathParameters.taskId = path.split('/')[2];
+            const result = await taskHandlers.completeTask(event);
             return addCorsHeaders(new Response(result.body, {
                 status: result.statusCode,
                 headers: { 'Content-Type': 'application/json' }

@@ -21,12 +21,18 @@ async function getTasks(event) {
             sort: { created_at: -1 }
         };
 
-        // Exclude tasks whose deadline has passed (show only current/future)
-        query.$or = [
-            { deadline: { $gte: new Date().toISOString() } },
-            { deadline: { $exists: false } },
-            { deadline: null }
-        ];
+        // Filter by owner (for "my tasks" — show all own tasks, no deadline filter)
+        if (owner === 'me') {
+            const userId = event.requestContext.authorizer.userId;
+            query.owner_id = userId;
+        } else {
+            // Exclude tasks whose deadline has passed (only for public list)
+            query.$or = [
+                { deadline: { $gte: new Date().toISOString() } },
+                { deadline: { $exists: false } },
+                { deadline: null }
+            ];
+        }
 
         // Filter by status
         if (status) {
@@ -36,12 +42,6 @@ async function getTasks(event) {
         // Filter by category
         if (category) {
             query.category = category;
-        }
-
-        // Filter by owner
-        if (owner === 'me') {
-            const userId = event.requestContext.authorizer.userId;
-            query.owner_id = userId;
         }
 
         // Search in title, description, tags
@@ -59,7 +59,7 @@ async function getTasks(event) {
         if (ownerIds.length > 0) {
             const users = await mongoManager.find('users', { user_id: { $in: ownerIds } });
             const userMap = users.reduce((acc, u) => {
-                acc[u.user_id] = { name: u.name, avatar_url: u.avatar_url };
+                acc[u.user_id] = { name: u.name, email: u.email, avatar_url: u.avatar_url };
                 return acc;
             }, {});
             
@@ -103,7 +103,7 @@ async function getTask(event) {
         if (task.owner_id) {
             const author = await mongoManager.findOne('users', { user_id: task.owner_id });
             if (author) {
-                task.author = { name: author.name, avatar_url: author.avatar_url };
+                task.author = { name: author.name, email: author.email, avatar_url: author.avatar_url };
             } else {
                 task.author = { name: 'Неизвестный автор' };
             }
@@ -425,6 +425,46 @@ async function matchWorker(event) {
     }
 }
 
+/**
+ * Complete task (owner only, task must be MATCHED)
+ */
+async function completeTask(event) {
+    try {
+        const taskId = event.pathParameters.taskId || event.pathParameters.id;
+        const userId = event.requestContext.authorizer.userId;
+
+        if (!validation.isValidUUID(taskId)) {
+            return response.error('Invalid task ID');
+        }
+
+        const task = await mongoManager.findOne('tasks', { task_id: taskId });
+        if (!task) {
+            return response.notFound('Task not found');
+        }
+
+        if (task.owner_id !== userId) {
+            return response.forbidden('Only task owner can complete the task');
+        }
+
+        if (task.status !== 'MATCHED') {
+            return response.error('Only tasks in progress can be completed');
+        }
+
+        const result = await mongoManager.updateOne(
+            'tasks',
+            { task_id: taskId },
+            { $set: { status: 'COMPLETED', updated_at: new Date().toISOString() } },
+            { returnUpdatedDocument: true }
+        );
+
+        const { _id, ...cleanTask } = result.document;
+        return response.success(cleanTask);
+    } catch (error) {
+        console.error('Error completing task:', error);
+        return response.serverError('Failed to complete task', error.message);
+    }
+}
+
 module.exports = {
     getTasks,
     getTask,
@@ -432,5 +472,6 @@ module.exports = {
     updateTask,
     deleteTask,
     applyToTask,
-    matchWorker
+    matchWorker,
+    completeTask
 };

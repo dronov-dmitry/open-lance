@@ -33,6 +33,24 @@ window.router.register('task-details', async function(props) {
 
         const isOwner = window.auth.isLoggedIn() && currentUserId === task.owner_id;
         const isWorker = window.auth.isLoggedIn() && currentUserId === task.matched_user_id;
+
+        // Показывать «Отзыв заказчику» только если исполнитель ещё не оставлял отзыв заказчику
+        let canReviewOwner = false;
+        if (isWorker && task.status === 'MATCHED' && task.owner_id) {
+            try {
+                const r = await window.api.canReviewUser(task.owner_id);
+                canReviewOwner = (r.data || r).canReview === true;
+            } catch (e) { /* canReviewOwner остаётся false */ }
+        }
+        // Показывать «Оставить отзыв» исполнителю только если заказчик ещё не оставлял отзыв (задача в работе или завершена)
+        let canReviewWorker = false;
+        if (isOwner && (task.status === 'MATCHED' || task.status === 'COMPLETED') && task.matched_user_id) {
+            try {
+                const r = await window.api.canReviewUser(task.matched_user_id);
+                canReviewWorker = (r.data || r).canReview === true;
+            } catch (e) { /* canReviewWorker остаётся false */ }
+        }
+
         const statusMap = {
             'OPEN': 'Открыта',
             'MATCHED': 'В работе',
@@ -158,7 +176,7 @@ window.router.register('task-details', async function(props) {
                                             : `<div style="width: 40px; height: 40px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; font-weight: bold; color: #7f8c8d;">${(app.user?.fullName || '?').charAt(0).toUpperCase()}</div>`
                                         }
                                         <div style="flex-grow: 1;">
-                                            <div style="font-weight: bold; color: #2c3e50;">${app.user?.fullName || app.user?.email || 'Неизвестный пользователь'}</div>
+                                            <a href="#" data-profile-id="${app.worker_id}" class="message-author-link" style="font-size: 0.95rem; font-weight: bold; line-height: 1;">${app.user?.fullName || app.user?.email || 'Неизвестный пользователь'}</a>
                                             <div style="font-size: 0.85rem; color: #7f8c8d;">Рейтинг: ${app.user?.rating ? app.user.rating.toFixed(1) : '—'} • Выполнено задач: ${app.user?.completedTasks || 0}</div>
                                         </div>
                                         <span class="task-status status-${app.status.toLowerCase()}" style="font-size: 0.8rem;">${app.status === 'PENDING' ? 'Ожидает' : app.status === 'ACCEPTED' ? 'Принят' : app.status === 'REJECTED' ? 'Отклонен' : app.status}</span>
@@ -168,23 +186,17 @@ window.router.register('task-details', async function(props) {
                                         <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px;">
                                             <button onclick="window.updateApplicationStatus('${app.application_id}', 'ACCEPTED', '${taskId}')" class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">Принять</button>
                                             <button onclick="window.updateApplicationStatus('${app.application_id}', 'REJECTED', '${taskId}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem; color: #e74c3c; border-color: #e74c3c;">Отклонить</button>
-                                            <button onclick="window.router.navigate('profile', { id: '${app.worker_id}' })" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">Профиль</button>
                                             <button onclick="window.toggleInlineMessageForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">✉️ Сообщение</button>
                                         </div>
-                                    ` : app.status === 'ACCEPTED' ? `
+                                    ` : (task.status === 'MATCHED' || task.status === 'COMPLETED') && task.matched_user_id === app.worker_id ? `
                                         <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px; flex-wrap: wrap;">
-                                            <button onclick="window.updateApplicationStatus('${app.application_id}', 'REJECTED', '${taskId}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem; color: #e74c3c; border-color: #e74c3c;">Отменить кандидата</button>
-                                            <button onclick="window.router.navigate('profile', { id: '${app.worker_id}' })" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">Профиль исполнителя</button>
+                                            ${task.status === 'MATCHED' ? `<button onclick="window.updateApplicationStatus('${app.application_id}', 'REJECTED', '${taskId}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem; color: #e74c3c; border-color: #e74c3c;">Отменить кандидата</button>` : ''}
                                             <button onclick="window.toggleInlineMessageForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">✉️ Написать</button>
+                                            ${canReviewWorker ? `<button onclick="window.toggleInlineReviewForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">⭐ Оставить отзыв</button>` : ''}
                                         </div>
-                                    ` : task.status === 'MATCHED' && task.matched_user_id === app.worker_id ? `
-                                        <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px; flex-wrap: wrap;">
-                                            <button onclick="window.router.navigate('profile', { id: '${app.worker_id}' })" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">Профиль исполнителя</button>
-                                            <button onclick="window.toggleInlineMessageForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">✉️ Написать</button>
-                                            <button onclick="window.toggleInlineReviewForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">⭐ Отзыв исполнителю</button>
-                                        </div>
+                                        ${canReviewWorker ? `
                                         <div id="inline-review-form-${app.worker_id}" style="display: none; margin-top: 15px; padding: 15px; border: 1px solid #f39c12; border-radius: 8px; background: #fffdf5;">
-                                            <h4 style="margin: 0 0 12px 0; color: #2c3e50;">Оставить отзыв</h4>
+                                            <h4 style="margin: 0 0 12px 0; color: #2c3e50;">Оставить отзыв исполнителю</h4>
                                             <div style="margin-bottom: 10px;">
                                                 <label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.9rem;">Оценка</label>
                                                 <select id="inline-review-rating-${app.worker_id}" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-family: inherit;">
@@ -204,15 +216,19 @@ window.router.register('task-details', async function(props) {
                                                 <button onclick="window.submitInlineReview('${app.worker_id}')" class="btn btn-primary" style="padding: 6px 15px; font-size: 0.9rem;">Опубликовать</button>
                                             </div>
                                         </div>
+                                        ` : ''}
+                                    ` : app.status === 'ACCEPTED' ? `
+                                        <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px; flex-wrap: wrap;">
+                                            <button onclick="window.updateApplicationStatus('${app.application_id}', 'REJECTED', '${taskId}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem; color: #e74c3c; border-color: #e74c3c;">Отменить кандидата</button>
+                                            <button onclick="window.toggleInlineMessageForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">✉️ Написать</button>
+                                        </div>
                                     ` : app.status === 'REJECTED' ? `
                                         <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px;">
                                             <button onclick="window.updateApplicationStatus('${app.application_id}', 'ACCEPTED', '${taskId}')" class="btn btn-outline" style="padding: 6px 15px; font-size: 0.9rem; color: #2ecc71; border-color: #2ecc71;">Принять кандидата</button>
-                                            <button onclick="window.router.navigate('profile', { id: '${app.worker_id}' })" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">Профиль исполнителя</button>
                                             <button onclick="window.toggleInlineMessageForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">✉️ Написать</button>
                                         </div>
                                     ` : `
                                         <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px;">
-                                            <button onclick="window.router.navigate('profile', { id: '${app.worker_id}' })" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">Профиль исполнителя</button>
                                             <button onclick="window.toggleInlineMessageForm('${app.worker_id}')" class="btn btn-secondary" style="padding: 6px 15px; font-size: 0.9rem;">✉️ Написать</button>
                                         </div>
                                     `}
@@ -256,6 +272,11 @@ window.router.register('task-details', async function(props) {
                         <h1 style="margin: 0; font-size: 2rem; color: #2c3e50;">${task.title}</h1>
                         <div style="display: flex; gap: 10px; align-items: center;">
                             ${(isAdmin || isOwner) ? `
+                                ${task.status === 'MATCHED' ? `
+                                <button onclick="window.completeTaskAdmin('${task.task_id}')" class="btn" style="background-color: #22c55e; color: white; padding: 6px 16px;">
+                                    Завершить задачу
+                                </button>
+                                ` : ''}
                                 <button onclick="window.deleteTaskAdmin('${task.task_id}')" class="btn" style="background-color: #ef4444; color: white; padding: 6px 16px;">
                                     Удалить задачу
                                 </button>
@@ -271,14 +292,14 @@ window.router.register('task-details', async function(props) {
                                 : `<div style="width: 32px; height: 32px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; font-weight: bold; color: #7f8c8d;">${(task.author.name || '?').charAt(0).toUpperCase()}</div>`
                             }
                             <div>
-                                <a href="#" data-profile-id="${task.owner_id}" class="message-author-link" style="font-size: 0.95rem; font-weight: bold; line-height: 1;">${task.author.name || 'Пользователь не указал имя'}</a>
+                                <a href="#" data-profile-id="${task.owner_id}" class="message-author-link" style="font-size: 0.95rem; font-weight: bold; line-height: 1;">${task.author.name || task.author.email || 'Пользователь не указал имя'}</a>
                                 <div style="font-size: 0.75rem; color: #95a5a6; margin-top: 4px;">Заказчик</div>
                             </div>
                             
                             ${(!isOwner && window.auth.isLoggedIn()) ? `
                                 <button onclick="window.toggleInlineMessageForm('${task.owner_id}')" class="btn btn-secondary" style="margin-left: 15px; padding: 4px 10px; font-size: 0.8rem;">✉️ Сообщение</button>
                             ` : ''}
-                            ${isWorker && task.status === 'MATCHED' ? `
+                            ${isWorker && task.status === 'MATCHED' && canReviewOwner ? `
                                 <button onclick="window.toggleInlineReviewForm('${task.owner_id}')" class="btn btn-secondary" style="margin-left: 15px; padding: 4px 10px; font-size: 0.8rem;">⭐ Отзыв заказчику</button>
                             ` : ''}
                         </div>
@@ -292,7 +313,7 @@ window.router.register('task-details', async function(props) {
                                 </div>
                             </div>
                         ` : ''}
-                        ${isWorker && task.status === 'MATCHED' ? `
+                        ${isWorker && task.status === 'MATCHED' && canReviewOwner ? `
                             <div id="inline-review-form-${task.owner_id}" style="display: none; margin-top: 15px; padding: 15px; border: 1px solid #f39c12; border-radius: 8px; background: #fffdf5;">
                                 <h4 style="margin: 0 0 12px 0; color: #2c3e50;">Оставить отзыв заказчику</h4>
                                 <div style="margin-bottom: 10px;">
@@ -471,6 +492,20 @@ window.withdrawMyApplication = async function(applicationId, taskId) {
     } catch (error) {
         console.error('Error withdrawing application:', error);
         window.utils.showToast(error.message || 'Ошибка при отзыве отклика', 'error');
+    }
+};
+
+// Complete task (owner only, task must be MATCHED)
+window.completeTaskAdmin = async function(taskId) {
+    if (!confirm('Отметить задачу как завершённую?')) return;
+    try {
+        await window.api.completeTask(taskId);
+        window.utils.showToast('Задача завершена', 'success');
+        localStorage.removeItem('my-tasks-cache');
+        localStorage.removeItem('my-tasks-cache-time');
+        window.router.navigate('task-details', { id: taskId }, { force: true });
+    } catch (e) {
+        window.utils.showToast(e.message || 'Ошибка завершения задачи', 'error');
     }
 };
 
