@@ -5,6 +5,7 @@ window.router.register('messages', async () => {
             <div class="empty-state">
                 <h3>Необходима авторизация</h3>
                 <p>Войдите в систему, чтобы просматривать личные сообщения</p>
+								</br>
                 <button onclick="document.getElementById('loginModal').classList.add('active')" class="btn btn-primary">
                     Войти
                 </button>

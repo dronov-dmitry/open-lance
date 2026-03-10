@@ -1,5 +1,18 @@
 // Tasks component
 window.router.register('tasks', async function() {
+    if (!window.auth.isLoggedIn()) {
+        return `
+            <div class="empty-state">
+                <h3>Необходима авторизация</h3>
+                <p>Войдите в систему, чтобы просматривать список задач</p>
+								</br>
+                <button onclick="document.getElementById('loginModal').classList.add('active')" class="btn btn-primary">
+                    Войти
+                </button>
+            </div>
+        `;
+    }
+
     try {
         // Optimistic loading pattern (similar to my-tasks)
         const cached = localStorage.getItem('all-tasks-cache');
@@ -142,10 +155,31 @@ window.router.register('tasks', async function() {
         `;
     } catch (error) {
         console.error('Error loading tasks:', error);
+        const msg = (error && error.message) ? String(error.message) : '';
+        const isUnauthorized = /Unauthorized|401|authorization|токен|token/i.test(msg);
+
+        let title = 'Ошибка загрузки';
+        let description = `Не удалось получить список задач: ${msg || 'неизвестная ошибка'}.`;
+
+        if (isUnauthorized) {
+            title = 'Требуется вход в аккаунт';
+            description = `
+                <p style="margin-bottom: 0.75rem;">Список задач доступен только авторизованным пользователям. Сервер вернул ошибку «Не авторизован» (401).</p>
+                <p style="margin-bottom: 0.75rem;"><strong>Возможные причины:</strong></p>
+                <ul style="text-align: left; margin: 0 0 1rem 1.5rem; color: #555;">
+                    <li>Вы не вошли в аккаунт — нажмите «Войти» и введите email и пароль.</li>
+                    <li>Сессия истекла — войдите в аккаунт повторно.</li>
+                    <li>Токен авторизации не передаётся или повреждён — попробуйте обновить страницу и войти снова.</li>
+                </ul>
+                <p style="margin: 0;">После успешного входа список задач загрузится автоматически.</p>
+            `;
+        }
+
         return `
             <div class="empty-state">
-                <h3>Ошибка загрузки</h3>
-                <p>Не удалось получить список задач: ${error.message}</p>
+                <h3>${title}</h3>
+                <div class="empty-state-description">${description}</div>
+                ${isUnauthorized ? '<p style="margin-top: 1rem;"><button type="button" class="btn btn-primary" onclick="document.getElementById(\'authBtn\').click()">Войти в аккаунт</button></p>' : ''}
             </div>
         `;
     }
