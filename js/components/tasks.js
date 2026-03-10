@@ -39,6 +39,10 @@ window.router.register('tasks', async function() {
             }).catch(e => console.error('Background tasks refresh failed:', e));
         }
 
+        // Hide tasks whose deadline has passed (backend also filters; this handles cache)
+        const now = new Date();
+        allTasks = allTasks.filter(t => !t.deadline || new Date(t.deadline) >= now);
+
         // Parse JWT to check for ADMIN role
         let isAdmin = false;
         let currentUserId = null;

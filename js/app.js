@@ -377,6 +377,32 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
     });
+
+    // Mobile nav: toggle menu on hamburger click, close when link clicked or outside
+    var navToggle = document.getElementById('navToggle');
+    var navbar = document.querySelector('.navbar');
+    var navMenu = document.getElementById('navMenu');
+    if (navToggle && navbar && navMenu) {
+        navToggle.addEventListener('click', function() {
+            navbar.classList.toggle('nav-open');
+            navToggle.classList.toggle('is-active');
+            document.body.style.overflow = navbar.classList.contains('nav-open') ? 'hidden' : '';
+        });
+        navMenu.addEventListener('click', function(e) {
+            if (e.target.closest('a') || e.target.closest('button')) {
+                navbar.classList.remove('nav-open');
+                navToggle.classList.remove('is-active');
+                document.body.style.overflow = '';
+            }
+        });
+        document.addEventListener('click', function(e) {
+            if (navbar.classList.contains('nav-open') && !navbar.contains(e.target)) {
+                navbar.classList.remove('nav-open');
+                navToggle.classList.remove('is-active');
+                document.body.style.overflow = '';
+            }
+        });
+    }
 });
 // Handle global errors (skip Turnstile widget errors to show a specific message)
 window.addEventListener('error', (event) => {
