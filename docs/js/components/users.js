@@ -1,18 +1,4 @@
 // Users Component
-// import { form_auth_message } from './messages.js';  // Именованный импорт
-// Helper to decode JWT
-function parseJwt(token) {
-    try {
-        const base64Url = token.split('.')[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/, '/');
-        const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-        }).join(''));
-        return JSON.parse(jsonPayload);
-    } catch (e) {
-        return null;
-    }
-}
 
 // Admin Action Handlers
 window.makeAdmin = async (userId) => {
@@ -49,7 +35,7 @@ window.toggleUserReviewForm = function(userId) {
 window.submitUserReview = async function(userId) {
     if (!window.auth.isLoggedIn()) {
         window.utils.showToast('Войдите в систему, чтобы оставить отзыв', 'warning');
-        document.getElementById('loginModal').classList.add('active');
+        window.auth.openLoginModal();
         return;
     }
 
@@ -102,7 +88,7 @@ window.submitUserReview = async function(userId) {
 
 window.router.register('users', async () => {
     if (!window.auth.isLoggedIn()) {
-				return window.form_auth_message("список фрилансеров");
+        return window.utils.renderAuthRequired('Войдите в систему, чтобы просматривать список фрилансеров');
     }
 
     // Get filter from URL or use default
@@ -160,13 +146,10 @@ window.router.register('users', async () => {
         // Determine if current user is admin and get their ID
         let isAdmin = false;
         let currentUserId = null;
-        const currentToken = window.api.getAuthToken();
-        if (currentToken) {
-            const payload = parseJwt(currentToken);
-            if (payload) {
-                if (payload.role === 'ADMIN') isAdmin = true;
-                currentUserId = payload.userId;
-            }
+        const payload = window.auth.getJwtPayload();
+        if (payload) {
+            isAdmin = payload.role === 'ADMIN';
+            currentUserId = payload.userId;
         }
 
         if (users.length === 0) {

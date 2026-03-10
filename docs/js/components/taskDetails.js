@@ -25,16 +25,10 @@ window.router.register('task-details', async function(props) {
         // Parse JWT to check for ADMIN role
         let isAdmin = false;
         let currentUserId = null;
-        if (window.auth.isLoggedIn()) {
-            try {
-                const token = window.auth.getToken();
-                const base64Url = token.split('.')[1];
-                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-                const decoded = JSON.parse(jsonPayload);
-                isAdmin = decoded.role === 'ADMIN';
-                currentUserId = decoded.userId;
-            } catch(e) {}
+        const payload = window.auth.getJwtPayload();
+        if (payload) {
+            isAdmin = payload.role === 'ADMIN';
+            currentUserId = payload.userId;
         }
 
         const isOwner = window.auth.isLoggedIn() && currentUserId === task.owner_id;
@@ -144,7 +138,7 @@ window.router.register('task-details', async function(props) {
             actionFormHtml = `
                 <div class="card" style="margin-top: 2rem; text-align: center;">
                     <p style="margin-bottom: 1rem;">Авторизуйтесь, чтобы откликнуться на задачу</p>
-                    <button onclick="document.getElementById('loginModal').classList.add('active')" class="btn btn-primary">Войти</button>
+                    <button onclick="window.auth.openLoginModal()" class="btn btn-primary">Войти</button>
                 </div>
             `;
         } else if (isOwner) {

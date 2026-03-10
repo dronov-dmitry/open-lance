@@ -118,20 +118,25 @@ window.utils = {
             clearTimeout(timeout);
             timeout = setTimeout(later, wait);
         };
+    },
+    // Единый блок «Необходима авторизация» (DRY)
+    renderAuthRequired(message) {
+        return `
+            <div class="empty-state">
+                <h3>Необходима авторизация</h3>
+                <p>${message}</p>
+								</br>
+                <button onclick="window.auth.openLoginModal()" class="btn btn-primary">
+                    Войти
+                </button>
+            </div>
+        `;
     }
 };
 // Register "My Tasks" route
 window.router.register('my-tasks', async function() {
     if (!window.auth.isLoggedIn()) {
-        return `
-            <div class="empty-state">
-                <h3>Необходима авторизация</h3>
-                <p>Войдите в систему, чтобы просмотреть свои задачи</p>
-                <button onclick="document.getElementById('loginModal').classList.add('active')" class="btn btn-primary">
-                    Войти
-                </button>
-            </div>
-        `;
+        return window.utils.renderAuthRequired('Войдите в систему, чтобы просмотреть свои задачи');
     }
     try {
         // Optimistic loading: показываем кэш сразу, если есть

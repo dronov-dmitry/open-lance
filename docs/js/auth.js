@@ -400,6 +400,21 @@ window.auth = (function() {
         };
     }
 
+    function getJwtPayload() {
+        const token = getToken();
+        if (!token) return null;
+        try {
+            const base64Url = token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            return JSON.parse(jsonPayload);
+        } catch (e) {
+            return null;
+        }
+    }
+
     function openLoginModal() {
         document.getElementById('loginModal').classList.add('active');
     }
@@ -414,11 +429,12 @@ window.auth = (function() {
         });
     }
 
-    return { 
+    return {
         getToken,
-        isLoggedIn, 
-        login, 
-        logout, 
+        getJwtPayload,
+        isLoggedIn,
+        login,
+        logout,
         getCurrentUser,
         updateUI,
         init,

@@ -435,7 +435,7 @@ window.router.register('profile', async function(props) {
         // Auth check at submit time
         if (!window.auth.isLoggedIn()) {
             window.utils.showToast('Войдите в систему, чтобы оставить отзыв', 'warning');
-            document.getElementById('loginModal').classList.add('active');
+            window.auth.openLoginModal();
             return;
         }
 

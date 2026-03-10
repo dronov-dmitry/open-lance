@@ -1,18 +1,7 @@
-// import { form_auth_message } from './messages.js';  // Именованный импорт
 // Tasks component
 window.router.register('tasks', async function() {
     if (!window.auth.isLoggedIn()) {
-        // return `
-        //     <div class="empty-state">
-        //         <h3>Необходима авторизация</h3>
-        //         <p>Войдите в систему, чтобы просматривать список задач</p>
-				// 				</br>
-        //         <button onclick="document.getElementById('loginModal').classList.add('active')" class="btn btn-primary">
-        //             Войти
-        //         </button>
-        //     </div>
-        // `;
-				return window.form_auth_message("список задач");
+        return window.utils.renderAuthRequired('Войдите в систему, чтобы просматривать список задач');
     }
 
     try {
@@ -61,16 +50,10 @@ window.router.register('tasks', async function() {
         // Parse JWT to check for ADMIN role
         let isAdmin = false;
         let currentUserId = null;
-        if (window.auth.isLoggedIn() && window.auth.getToken()) {
-            try {
-                const token = window.auth.getToken();
-                const base64Url = token.split('.')[1];
-                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-                const decoded = JSON.parse(jsonPayload);
-                isAdmin = decoded.role === 'ADMIN';
-                currentUserId = decoded.userId;
-            } catch(e) {}
+        const payload = window.auth.getJwtPayload();
+        if (payload) {
+            isAdmin = payload.role === 'ADMIN';
+            currentUserId = payload.userId;
         }
 
         window.deleteTaskAdmin = async (taskId) => {
