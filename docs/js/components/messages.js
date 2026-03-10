@@ -1,16 +1,22 @@
 // Messages Component
-window.router.register('messages', async () => {
-    if (!window.auth.isLoggedIn()) {
-        return `
+function form_auth_message(look_at) {
+	return `
             <div class="empty-state">
                 <h3>Необходима авторизация</h3>
-                <p>Войдите в систему, чтобы просматривать личные сообщения</p>
+                <p>Войдите в систему, чтобы просматривать ${look_at}</p>
 								</br>
                 <button onclick="document.getElementById('loginModal').classList.add('active')" class="btn btn-primary">
                     Войти
                 </button>
             </div>
-        `;
+        `
+}
+window.form_auth_message = form_auth_message;  // Делаем глобальной
+
+window.router.register('messages', async () => {
+    if (!window.auth.isLoggedIn()) {
+				look_at = "личные сообщения";
+        return form_auth_message(look_at);
     }
 
     // Expose global functions for the view

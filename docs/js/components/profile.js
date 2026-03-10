@@ -1,19 +1,11 @@
 // Profile component
+// import { form_auth_message } from './messages.js';  // Именованный импорт
 window.router.register('profile', async function(props) {
     const userId = props?.id || 'me';
     const isOwnProfile = userId === 'me';
 
     if (isOwnProfile && !window.auth.isLoggedIn()) {
-        return `
-            <div class="empty-state">
-                <h3>Необходима авторизация</h3>
-                <p>Войдите в систему, чтобы просматривать и редактировать свой профиль</p>
-								</br>
-                <button onclick="document.getElementById('loginModal').classList.add('active')" class="btn btn-primary">
-                    Войти
-                </button>
-            </div>
-        `;
+				return window.form_auth_message("и редактировать свой профиль");
     }
 
     // Initialize global state for profile edit mode
