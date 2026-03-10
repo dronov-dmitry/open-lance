@@ -30,7 +30,8 @@ window.router.register('messages', async () => {
 
             let html = '<div class="messages-list">';
             for (const msg of messages) {
-                const partnerName = msg.related_user.name || msg.related_user.email || 'Без имени';
+                const ru = msg.related_user || {};
+                const partnerName = (ru.name && String(ru.name).trim()) ? ru.name : (ru.email || 'Без имени');
                 const partnerId = tab === 'inbox' ? msg.sender_id : msg.receiver_id;
                 const roleBadge = msg.related_user.role === 'ADMIN' ? '<span class="badge admin" style="font-size: 0.7rem; padding: 2px 5px;">Админ</span>' : '';
                 const dateStr = new Date(msg.created_at).toLocaleString('ru-RU', { 
