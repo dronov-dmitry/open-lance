@@ -15,7 +15,7 @@ window.router.register('home', async function() {
                         ${window.auth.isLoggedIn() 
                             ? `<a href="#" data-page="tasks" class="btn btn-primary btn-large">Перейти к задачам</a>`
                             : `<button onclick="document.getElementById('registerModal').classList.add('active')" class="btn btn-primary btn-large">Начать работу</button>
-                               <button onclick="document.getElementById('loginModal').classList.add('active')" class="btn btn-outline btn-large">Войти</button>`
+                               <button onclick="window.auth.openLoginModal()" class="btn btn-outline btn-large">Войти</button>`
                         }
                     </div>
                 </div>
