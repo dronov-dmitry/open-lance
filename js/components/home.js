@@ -43,8 +43,8 @@ window.router.register('home', async function() {
                         </div>
                         <div class="feature-card">
                             <div class="feature-icon">🔒</div>
-                            <h3>Безопасность</h3>
-                            <p>Контакты открываются только после подтверждения "Мэтча" между заказчиком и исполнителем</p>
+                            <h3>Честные отзывы</h3>
+                            <p>Рейтинг формируется только по реальным сделкам: отзыв можно оставить лишь после совместной работы по задаче</p>
                         </div>
                         <div class="feature-card">
                             <div class="feature-icon">💬</div>
