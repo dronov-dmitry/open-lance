@@ -68,7 +68,7 @@ window.utils = {
             }
         };
         
-        const timeoutId = setTimeout(removeToast, 3000);
+        const timeoutId = setTimeout(removeToast, 2000);
         
         // Click to dismiss
         toastElement.addEventListener('click', () => {
