@@ -86,10 +86,11 @@ async function getMessages(event) {
                 return acc;
             }, {});
 
-            // Enrich messages with sender/receiver details
+            // Enrich messages with sender/receiver details (name + email для отображения в списке сообщений)
             messages.forEach(m => {
                 const targetId = type === 'sent' ? m.receiver_id : m.sender_id;
-                m.related_user = userMap[targetId] || { name: 'Удаленный пользователь' };
+                const u = userMap[targetId];
+                m.related_user = u ? { name: u.name, email: u.email, avatar: u.avatar, role: u.role } : { name: 'Удаленный пользователь', email: null };
             });
         }
 

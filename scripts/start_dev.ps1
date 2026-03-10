@@ -7,7 +7,10 @@ Write-Host "Starting Open-Lance Development Servers..." -ForegroundColor Cyan
 Write-Host "===========================================" -ForegroundColor Cyan
 
 $PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
-$EnvFile = Join-Path $PSScriptRoot "..\\.env"
+$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$EnvFile = Join-Path $ProjectRoot ".env"
+$DocsPath = Join-Path $ProjectRoot "docs"
+$BackendPath = Join-Path $ProjectRoot "backend"
 
 # Read .env file to check if we are in local or cloud mode
 $isLocalBackend = $true # Default to local just in case
@@ -40,11 +43,11 @@ if ($Local) {
 
 Write-Host ""
 Write-Host "[1/2] Starting Frontend Server (Port 8080)..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$PSScriptRoot\..\docs`"; python -m http.server 8080" -WindowStyle Normal
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$DocsPath`"; python -m http.server 8080" -WindowStyle Normal
 
 if ($isLocalBackend) {
     Write-Host "[2/2] Starting Backend Server (Wrangler / Port 8787)..." -ForegroundColor Yellow
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$PSScriptRoot\..\backend`"; npx wrangler dev" -WindowStyle Normal
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd `"$BackendPath`"; npx wrangler dev" -WindowStyle Normal
     Write-Host "`nDevelopment servers started!" -ForegroundColor Green
     Write-Host "`nFrontend URL: http://localhost:8080" -ForegroundColor White
     Write-Host "Backend URL:  http://127.0.0.1:8787" -ForegroundColor White
