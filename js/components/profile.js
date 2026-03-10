@@ -229,7 +229,7 @@ window.router.register('profile', async function(props) {
             container.innerHTML = `
                 <div class="card" style="max-width: 600px; margin: 0 auto; text-align: center;">
                     ${avatarHtml}
-                    <h2 style="margin: 0 0 5px 0;">${p.name || 'Пользователь не указал имя'}</h2>
+                    <h2 style="margin: 0 0 5px 0;">${p.name || p.email || 'Пользователь не указал имя'}</h2>
                     <h4 style="margin: 0 0 10px 0; color: #7f8c8d; font-weight: normal;">${p.title || 'Специальность не указана'}</h4>
                     ${p.specializations && Array.isArray(p.specializations) && p.specializations.length > 0 ? `
                         <div style="margin-bottom: 15px;">
