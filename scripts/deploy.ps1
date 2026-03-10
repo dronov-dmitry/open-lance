@@ -796,32 +796,47 @@ function Set-FrontendConfig {
 
     Write-Info "Updating frontend configuration..."
 
-    if ($null -eq $script:TURNSTILE_SITE_KEY) { $script:TURNSTILE_SITE_KEY = "" }
-    $turnstileSiteKeyVal = ($script:TURNSTILE_SITE_KEY -replace "[\r\n]+", "").Trim()
-    $envVal = ($Environment -replace "[\r\n]+", "").Trim()
-    $apiUrlVal = ($API_URL -replace "[\r\n]+", "").Trim()
+    # Sanitize for use inside JS single-quoted string: one line, no newlines, escape \ and '
+    function Get-SafeJsString {
+        param([string]$Raw)
+        if ([string]::IsNullOrEmpty($Raw)) { return "" }
+        $s = $Raw -replace "[\r\n]+", "" -replace "\\", "\\\\" -replace "'", "\'" -replace "`"", "\`""
+        $s.Trim()
+    }
 
-    $configLines = @(
-    "// Configuration for Open-Lance v3.0 (Cloudflare Workers + MongoDB Atlas)",
-    "const CONFIG = {",
-    "    ENV: " + [char]39 + $envVal + [char]39 + ",",
-    "    API: {",
-    "        development: { baseURL: " + [char]39 + $apiUrlVal + [char]39 + " },",
-    "        production: { baseURL: " + [char]39 + $apiUrlVal + [char]39 + " }",
-    "    },",
-    "    SETTINGS: { maxContactLinks: 10, defaultPageSize: 20, retryAttempts: 3, retryDelay: 1000 },",
-    "    turnstileSiteKey: " + [char]39 + $turnstileSiteKeyVal + [char]39 + "",
-    "};",
-    "function getConfig() {",
-    "    const env = CONFIG.ENV || " + [char]39 + "development" + [char]39 + ";",
-    "    let fallbackURL = " + [char]39 + $apiUrlVal + [char]39 + ";",
-    "    if (env === " + [char]39 + "local" + [char]39 + " || env === " + [char]39 + "development" + [char]39 + ") fallbackURL = " + [char]39 + "http://127.0.0.1:8787" + [char]39 + ";",
-    "    const apiConfig = CONFIG.API[env] || { baseURL: fallbackURL };",
-    "    return { apiBaseURL: apiConfig.baseURL, ...CONFIG.SETTINGS, turnstileSiteKey: CONFIG.turnstileSiteKey || " + [char]39 + [char]39 + " };",
-    "}",
-    "window.APP_CONFIG = getConfig();"
-)
-    $configContent = $configLines -join "`n"
+    $rawEnv = if ($script:Environment) { $script:Environment } else { $Environment }
+    $rawApi = if ($script:API_URL) { $script:API_URL } else { $API_URL }
+    $rawTurnstile = if ($script:TURNSTILE_SITE_KEY) { $script:TURNSTILE_SITE_KEY } else { "" }
+
+    $envVal = Get-SafeJsString -Raw $rawEnv
+    if ([string]::IsNullOrWhiteSpace($envVal)) { $envVal = "development" }
+
+    $apiUrlVal = Get-SafeJsString -Raw $rawApi
+    if ([string]::IsNullOrWhiteSpace($apiUrlVal)) { $apiUrlVal = "http://127.0.0.1:8787" }
+
+    $turnstileSiteKeyVal = Get-SafeJsString -Raw $rawTurnstile
+
+    # Build config.js with explicit newlines only where intended (avoid any stray CR/LF in literals)
+    $q = [char]39
+    $nl = "`n"
+    $configContent = "// Configuration for Open-Lance v3.0 (Cloudflare Workers + MongoDB Atlas)" + $nl +
+        "const CONFIG = {" + $nl +
+        "    ENV: " + $q + $envVal + $q + "," + $nl +
+        "    API: {" + $nl +
+        "        development: { baseURL: " + $q + $apiUrlVal + $q + " }," + $nl +
+        "        production: { baseURL: " + $q + $apiUrlVal + $q + " }" + $nl +
+        "    }," + $nl +
+        "    SETTINGS: { maxContactLinks: 10, defaultPageSize: 20, retryAttempts: 3, retryDelay: 1000 }," + $nl +
+        "    turnstileSiteKey: " + $q + $turnstileSiteKeyVal + $q + $nl +
+        "};" + $nl +
+        "function getConfig() {" + $nl +
+        "    const env = CONFIG.ENV || " + $q + "development" + $q + ";" + $nl +
+        "    let fallbackURL = " + $q + $apiUrlVal + $q + ";" + $nl +
+        "    if (env === " + $q + "local" + $q + " || env === " + $q + "development" + $q + ") fallbackURL = " + $q + "http://127.0.0.1:8787" + $q + ";" + $nl +
+        "    const apiConfig = CONFIG.API[env] || { baseURL: fallbackURL };" + $nl +
+        "    return { apiBaseURL: apiConfig.baseURL, ...CONFIG.SETTINGS, turnstileSiteKey: CONFIG.turnstileSiteKey || " + $q + $q + " };" + $nl +
+        "}" + $nl +
+        "window.APP_CONFIG = getConfig();"
 
     $configPath = Join-Path $ProjectRoot "docs\js\config.js"
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false

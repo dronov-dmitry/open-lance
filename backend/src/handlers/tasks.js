@@ -23,7 +23,10 @@ async function getTasks(event) {
 
         // Filter by owner (for "my tasks" — show all own tasks, no deadline filter)
         if (owner === 'me') {
-            const userId = event.requestContext.authorizer.userId;
+            const userId = event.requestContext?.authorizer?.userId;
+            if (!userId) {
+                return response.unauthorized('Authentication required');
+            }
             query.owner_id = userId;
         } else {
             // Exclude tasks whose deadline has passed (only for public list)
@@ -68,11 +71,40 @@ async function getTasks(event) {
             });
         }
 
-        // Remove MongoDB _id field from response
-        const cleanTasks = tasks.map(task => {
-            const { _id, ...cleanTask } = task;
-            return cleanTask;
-        });
+        // Build plain objects for response (avoid BSON/serialization errors in Workers)
+        const cleanTasks = tasks.map(task => ({
+            task_id: task.task_id,
+            owner_id: task.owner_id,
+            title: task.title,
+            description: task.description,
+            category: task.category,
+            tags: Array.isArray(task.tags) ? task.tags : [],
+            budget_estimate: task.budget_estimate,
+            deadline: task.deadline,
+            status: task.status,
+            matched_user_id: task.matched_user_id || null,
+            created_at: task.created_at,
+            updated_at: task.updated_at,
+            author: task.author || null,
+            applications: Array.isArray(task.applications)
+                ? task.applications.map(app => ({
+                    application_id: app.application_id ? String(app.application_id) : null,
+                    worker_id: app.worker_id ? String(app.worker_id) : null,
+                    task_id: app.task_id ? String(app.task_id) : null,
+                    message: app.message != null ? String(app.message) : '',
+                    status: app.status ? String(app.status) : 'PENDING',
+                    created_at: app.created_at || null,
+                    updated_at: app.updated_at || null,
+                    user: app.user && typeof app.user === 'object' ? {
+                        fullName: app.user.fullName || null,
+                        email: app.user.email || null,
+                        avatar: app.user.avatar || null,
+                        rating: app.user.rating != null ? Number(app.user.rating) : null,
+                        completedTasks: app.user.completedTasks != null ? Number(app.user.completedTasks) : null
+                    } : null
+                }))
+                : []
+        }));
 
         return response.success(cleanTasks);
     } catch (error) {
@@ -86,9 +118,10 @@ async function getTasks(event) {
  */
 async function getTask(event) {
     try {
-        const taskId = event.pathParameters.id || event.pathParameters.taskId;
+        const pathParams = event.pathParameters || {};
+        const taskId = pathParams.id || pathParams.taskId;
 
-        if (!validation.isValidUUID(taskId)) {
+        if (!taskId || !validation.isValidUUID(taskId)) {
             return response.error('Invalid task ID');
         }
 
@@ -99,22 +132,54 @@ async function getTask(event) {
             return response.notFound('Task not found');
         }
 
-        // Fetch author
+        // Fetch author (plain object for JSON serialization)
         if (task.owner_id) {
             const author = await mongoManager.findOne('users', { user_id: task.owner_id });
             if (author) {
-                task.author = { name: author.name, email: author.email, avatar_url: author.avatar_url };
+                task.author = {
+                    name: author.name || null,
+                    email: author.email || null,
+                    avatar_url: author.avatar_url || null
+                };
             } else {
-                task.author = { name: 'Неизвестный автор' };
+                task.author = { name: 'Неизвестный автор', email: null, avatar_url: null };
             }
         }
 
-        // Deeply clone and remove _id to prevent MongoDB BSON error when serializing
-        const cleanTask = JSON.parse(JSON.stringify(task));
-        delete cleanTask._id;
-        if (cleanTask.applications && Array.isArray(cleanTask.applications)) {
-            cleanTask.applications.forEach(app => delete app._id);
-        }
+        // Build plain object for response (avoid BSON/serialization errors in Workers)
+        const cleanTask = {
+            task_id: task.task_id,
+            owner_id: task.owner_id,
+            title: task.title,
+            description: task.description,
+            category: task.category,
+            tags: Array.isArray(task.tags) ? task.tags : [],
+            budget_estimate: task.budget_estimate,
+            deadline: task.deadline,
+            status: task.status,
+            matched_user_id: task.matched_user_id || null,
+            created_at: task.created_at,
+            updated_at: task.updated_at,
+            author: task.author || null,
+            applications: Array.isArray(task.applications)
+                ? task.applications.map(app => ({
+                    application_id: app.application_id ? String(app.application_id) : null,
+                    worker_id: app.worker_id ? String(app.worker_id) : null,
+                    task_id: app.task_id ? String(app.task_id) : null,
+                    message: app.message != null ? String(app.message) : '',
+                    status: app.status ? String(app.status) : 'PENDING',
+                    created_at: app.created_at || null,
+                    updated_at: app.updated_at || null,
+                    user: app.user && typeof app.user === 'object' ? {
+                        fullName: app.user.fullName || null,
+                        email: app.user.email || null,
+                        avatar: app.user.avatar || null,
+                        rating: app.user.rating != null ? Number(app.user.rating) : null,
+                        completedTasks: app.user.completedTasks != null ? Number(app.user.completedTasks) : null
+                    } : null
+                }))
+                : []
+        };
 
         return response.success(cleanTask);
     } catch (error) {

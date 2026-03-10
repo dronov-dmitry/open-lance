@@ -214,9 +214,11 @@ async function submitReview(event) {
  */
 async function canReviewUser(event) {
     try {
-        const targetUserId = event.pathParameters.userId;
-        const reviewerId = event.requestContext.authorizer.userId;
-        
+        const reviewerId = event.requestContext?.authorizer?.userId;
+        if (!reviewerId) {
+            return response.unauthorized('Authentication required');
+        }
+        const targetUserId = event.pathParameters?.userId;
         if (!targetUserId) {
             return response.error('Target user ID is missing from path', 400);
         }

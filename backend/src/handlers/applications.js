@@ -13,7 +13,10 @@ const { ObjectId } = require('mongodb');
  */
 async function getMyApplications(event) {
     try {
-        const userId = event.requestContext.authorizer.userId;
+        const userId = event.requestContext?.authorizer?.userId;
+        if (!userId) {
+            return response.unauthorized('Authentication required');
+        }
         console.log('[getMyApplications] User ID:', userId);
 
         // 1. Get from applications collection
@@ -60,43 +63,60 @@ async function getMyApplications(event) {
         console.log('[getMyApplications] Found embedded apps:', embeddedApps.length);
         console.log('[getMyApplications] Total unique applications:', applications.length);
 
-        // 5. Get task details and strip _id safely
+        // 5. Get task details and build plain objects (avoid BSON/serialization in Workers)
         const applicationsWithTasks = await Promise.all(
             applications.map(async (app) => {
                 const task = await mongoManager.findOne('tasks', {
                     task_id: app.task_id
                 });
-                
-                // Strip _id to prevent serialization issues
-                const { _id: appId, ...cleanApp } = app;
-                
-                // If task is MATCHED and this worker is the matched user, application should be ACCEPTED
-                if (task && task.status === 'MATCHED' && task.matched_user_id === app.worker_id) {
-                    cleanApp.status = 'ACCEPTED';
-                }
-                
-                if (task) {
-                    const { _id: taskId, ...cleanTask } = task;
-                    if (cleanTask.applications && Array.isArray(cleanTask.applications)) {
-                        cleanTask.applications = cleanTask.applications.map(a => {
-                            const { _id, ...cleanA } = a;
-                            // Also update status in embedded applications if task is MATCHED
-                            if (task.status === 'MATCHED' && task.matched_user_id === a.worker_id) {
-                                cleanA.status = 'ACCEPTED';
-                            }
-                            return cleanA;
-                        });
-                    }
-                    return {
-                        ...cleanApp,
-                        task: cleanTask
-                    };
-                }
-                
-                return {
-                    ...cleanApp,
-                    task: null
+                const appStatus = (task && task.status === 'MATCHED' && task.matched_user_id === app.worker_id)
+                    ? 'ACCEPTED'
+                    : (app.status ? String(app.status) : 'PENDING');
+                const cleanApp = {
+                    application_id: app.application_id ? String(app.application_id) : null,
+                    worker_id: app.worker_id ? String(app.worker_id) : null,
+                    task_id: app.task_id ? String(app.task_id) : null,
+                    message: app.message != null ? String(app.message) : '',
+                    status: appStatus,
+                    created_at: app.created_at || null,
+                    updated_at: app.updated_at || null
                 };
+                if (!task) {
+                    return { ...cleanApp, task: null };
+                }
+                const cleanTask = {
+                    task_id: task.task_id,
+                    owner_id: task.owner_id,
+                    title: task.title,
+                    description: task.description,
+                    category: task.category,
+                    tags: Array.isArray(task.tags) ? task.tags : [],
+                    budget_estimate: task.budget_estimate,
+                    deadline: task.deadline,
+                    status: task.status,
+                    matched_user_id: task.matched_user_id || null,
+                    created_at: task.created_at,
+                    updated_at: task.updated_at,
+                    applications: Array.isArray(task.applications)
+                        ? task.applications.map(a => ({
+                            application_id: a.application_id ? String(a.application_id) : null,
+                            worker_id: a.worker_id ? String(a.worker_id) : null,
+                            task_id: a.task_id ? String(a.task_id) : null,
+                            message: a.message != null ? String(a.message) : '',
+                            status: (task.status === 'MATCHED' && task.matched_user_id === a.worker_id) ? 'ACCEPTED' : (a.status ? String(a.status) : 'PENDING'),
+                            created_at: a.created_at || null,
+                            updated_at: a.updated_at || null,
+                            user: a.user && typeof a.user === 'object' ? {
+                                fullName: a.user.fullName || null,
+                                email: a.user.email || null,
+                                avatar: a.user.avatar || null,
+                                rating: a.user.rating != null ? Number(a.user.rating) : null,
+                                completedTasks: a.user.completedTasks != null ? Number(a.user.completedTasks) : null
+                            } : null
+                        }))
+                        : []
+                };
+                return { ...cleanApp, task: cleanTask };
             })
         );
 

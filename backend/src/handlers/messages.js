@@ -149,15 +149,19 @@ async function markMessageRead(event) {
  */
 async function getUnreadCount(event) {
     try {
-        const userId = event.requestContext.authorizer.userId;
-        const count = await mongoManager.getCollection('messages').countDocuments({
+        const userId = event.requestContext?.authorizer?.userId;
+        if (!userId) {
+            return response.unauthorized('Authentication required');
+        }
+        const count = await mongoManager.count('messages', {
             receiver_id: userId,
             read: false
         });
         return response.success({ unreadCount: count });
     } catch (error) {
         console.error('Error getting unread count:', error);
-        return response.serverError('Failed to get unread count', error.message);
+        // Return 200 with 0 so UI badge still works; avoid 500 for optional feature
+        return response.success({ unreadCount: 0 });
     }
 }
 
