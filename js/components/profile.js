@@ -8,6 +8,7 @@ window.router.register('profile', async function(props) {
             <div class="empty-state">
                 <h3>Необходима авторизация</h3>
                 <p>Войдите в систему, чтобы просматривать и редактировать свой профиль</p>
+								</br>
                 <button onclick="document.getElementById('loginModal').classList.add('active')" class="btn btn-primary">
                     Войти
                 </button>

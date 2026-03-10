@@ -101,6 +101,19 @@ window.submitUserReview = async function(userId) {
 };
 
 window.router.register('users', async () => {
+    if (!window.auth.isLoggedIn()) {
+        return `
+            <div class="empty-state">
+                <h3>Необходима авторизация</h3>
+                <p>Войдите в систему, чтобы просматривать список фрилансеров</p>
+								</br>
+                <button onclick="document.getElementById('loginModal').classList.add('active')" class="btn btn-primary">
+                    Войти
+                </button>
+            </div>
+        `;
+    }
+
     // Get filter from URL or use default
     const urlParams = new URLSearchParams(window.location.hash.split('?')[1] || '');
     const currentSpecializationFilter = urlParams.get('specialization') || '';
