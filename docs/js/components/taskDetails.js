@@ -271,7 +271,7 @@ window.router.register('task-details', async function(props) {
                                 : `<div style="width: 32px; height: 32px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; font-weight: bold; color: #7f8c8d;">${(task.author.name || '?').charAt(0).toUpperCase()}</div>`
                             }
                             <div>
-                                <div style="font-size: 0.95rem; font-weight: bold; color: #2c3e50; line-height: 1;">${task.author.name || 'Пользователь не указал имя'}</div>
+                                <a href="#" data-profile-id="${task.owner_id}" class="message-author-link" style="font-size: 0.95rem; font-weight: bold; line-height: 1;">${task.author.name || 'Пользователь не указал имя'}</a>
                                 <div style="font-size: 0.75rem; color: #95a5a6; margin-top: 4px;">Заказчик</div>
                             </div>
                             
