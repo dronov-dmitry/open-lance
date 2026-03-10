@@ -68,7 +68,7 @@ window.utils = {
             }
         };
         
-        const timeoutId = setTimeout(removeToast, 5000);
+        const timeoutId = setTimeout(removeToast, 3000);
         
         // Click to dismiss
         toastElement.addEventListener('click', () => {
@@ -133,6 +133,31 @@ window.utils = {
         `;
     }
 };
+
+// Обновить значок непрочитанных сообщений в навбаре (вызывается при логине и при загрузке сообщений)
+window.updateUnreadMessagesBadge = async function(optionalCount) {
+    const link = document.querySelector('a[data-page="messages"]');
+    if (!link) return;
+    let count;
+    if (typeof optionalCount === 'number') {
+        count = optionalCount;
+    } else if (!window.auth.isLoggedIn()) {
+        count = 0;
+    } else if (window.api && typeof window.api.getUnreadMessagesCount === 'function') {
+        try {
+            count = await window.api.getUnreadMessagesCount();
+        } catch (e) {
+            count = 0;
+        }
+    } else {
+        count = 0;
+    }
+    const badge = count > 0
+        ? ' <span class="nav-unread-badge" title="Непрочитанные сообщения">' + (count > 99 ? '99+' : count) + '</span>'
+        : '';
+    link.innerHTML = 'Сообщения' + badge;
+};
+
 // Register "My Tasks" route
 window.router.register('my-tasks', async function() {
     if (!window.auth.isLoggedIn()) {
@@ -407,6 +432,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.body.style.overflow = '';
             }
         });
+    }
+
+    if (window.auth.isLoggedIn() && typeof window.updateUnreadMessagesBadge === 'function') {
+        window.updateUnreadMessagesBadge();
     }
 });
 // Handle global errors (skip Turnstile widget errors to show a specific message)

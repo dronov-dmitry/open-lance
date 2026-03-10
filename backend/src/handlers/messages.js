@@ -82,7 +82,7 @@ async function getMessages(event) {
         if (relatedUserIds.length > 0) {
             const users = await mongoManager.find('users', { user_id: { $in: relatedUserIds } });
             const userMap = users.reduce((acc, user) => {
-                acc[user.user_id] = { name: user.name, avatar: user.avatar_url, role: user.role };
+                acc[user.user_id] = { name: user.name, email: user.email, avatar: user.avatar_url, role: user.role };
                 return acc;
             }, {});
 
@@ -143,8 +143,26 @@ async function markMessageRead(event) {
     }
 }
 
+/**
+ * Get unread messages count (inbox only)
+ */
+async function getUnreadCount(event) {
+    try {
+        const userId = event.requestContext.authorizer.userId;
+        const count = await mongoManager.getCollection('messages').countDocuments({
+            receiver_id: userId,
+            read: false
+        });
+        return response.success({ unreadCount: count });
+    } catch (error) {
+        console.error('Error getting unread count:', error);
+        return response.serverError('Failed to get unread count', error.message);
+    }
+}
+
 module.exports = {
     sendMessage,
     getMessages,
-    markMessageRead
+    markMessageRead,
+    getUnreadCount
 };

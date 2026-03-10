@@ -30,7 +30,7 @@ window.router.register('messages', async () => {
 
             let html = '<div class="messages-list">';
             for (const msg of messages) {
-                const partnerName = msg.related_user.name || 'Без имени';
+                const partnerName = msg.related_user.name || msg.related_user.email || 'Без имени';
                 const partnerId = tab === 'inbox' ? msg.sender_id : msg.receiver_id;
                 const roleBadge = msg.related_user.role === 'ADMIN' ? '<span class="badge admin" style="font-size: 0.7rem; padding: 2px 5px;">Админ</span>' : '';
                 const dateStr = new Date(msg.created_at).toLocaleString('ru-RU', { 
@@ -54,6 +54,9 @@ window.router.register('messages', async () => {
             }
             html += '</div>';
             container.innerHTML = html;
+            if (tab === 'inbox' && typeof window.updateUnreadMessagesBadge === 'function') {
+                window.updateUnreadMessagesBadge();
+            }
         } catch (e) {
             container.innerHTML = `<div class="error">Ошибка загрузки сообщений: ${e.message}</div>`;
         }
@@ -64,7 +67,9 @@ window.router.register('messages', async () => {
             await window.api.request(`/messages/${messageId}/read`, { method: 'PUT' });
             window.loadMessagesTab(window.messageState.currentTab);
             window.utils.showToast('Сообщение прочитано');
-            // Dispatch event to update global unread counters if we add them later
+            if (typeof window.updateUnreadMessagesBadge === 'function') {
+                window.updateUnreadMessagesBadge();
+            }
         } catch (e) {
             window.utils.showToast(e.message, 'error');
         }

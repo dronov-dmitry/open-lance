@@ -456,6 +456,14 @@ async function handleRequest(request, env) {
             }));
         }
 
+        if (path === '/messages/unread-count' && method === 'GET') {
+            const result = await messageHandlers.getUnreadCount(event);
+            return addCorsHeaders(new Response(result.body, {
+                status: result.statusCode,
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        }
+
         if (path === '/messages' && method === 'GET') {
             const result = await messageHandlers.getMessages(event);
             return addCorsHeaders(new Response(result.body, {

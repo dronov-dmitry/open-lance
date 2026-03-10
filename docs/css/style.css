@@ -145,6 +145,23 @@ body {
     color: var(--primary-color);
 }
 
+.nav-unread-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    margin-left: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+    background: var(--danger-color);
+    border-radius: 10px;
+    vertical-align: middle;
+}
+
 @media (max-width: 768px) {
     .nav-toggle {
         display: flex;
