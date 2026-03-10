@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="description" content="Open-Lance - Маркетплейс для фрилансеров и заказчиков">
     <title>Open-Lance - Freelance Marketplace</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -11,10 +11,15 @@
 <body>
     <!-- Navigation -->
     <nav class="navbar">
-        <div class="container">
+        <div class="container nav-container">
             <div class="nav-brand">
                 <h1><a href="#" data-page="home" style="text-decoration: none; color: inherit; cursor: pointer;">Open-Lance</a></h1>
             </div>
+            <button type="button" class="nav-toggle" id="navToggle" aria-label="Меню">
+                <span class="nav-toggle-bar"></span>
+                <span class="nav-toggle-bar"></span>
+                <span class="nav-toggle-bar"></span>
+            </button>
             <div class="nav-menu" id="navMenu">
                 <a href="#" data-page="home">Главная</a>
                 <a href="#" data-page="tasks">Задачи</a>

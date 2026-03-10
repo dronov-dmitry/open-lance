@@ -21,6 +21,13 @@ async function getTasks(event) {
             sort: { created_at: -1 }
         };
 
+        // Exclude tasks whose deadline has passed (show only current/future)
+        query.$or = [
+            { deadline: { $gte: new Date().toISOString() } },
+            { deadline: { $exists: false } },
+            { deadline: null }
+        ];
+
         // Filter by status
         if (status) {
             query.status = status;
