@@ -60,6 +60,9 @@ window.auth = (function() {
             navMenu.querySelectorAll('a[data-page]').forEach(link => {
                 link.style.display = '';
             });
+            if (typeof window.updateUnreadMessagesBadge === 'function') {
+                window.updateUnreadMessagesBadge();
+            }
         } else {
             authBtn.textContent = 'Войти';
             authBtn.onclick = () => openLoginModal();
@@ -70,6 +73,9 @@ window.auth = (function() {
                     link.style.display = 'none';
                 }
             });
+            if (typeof window.updateUnreadMessagesBadge === 'function') {
+                window.updateUnreadMessagesBadge(0);
+            }
         }
     }
 

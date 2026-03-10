@@ -467,6 +467,12 @@ class APIService {
 
     // ===== Message Endpoints =====
 
+    async getUnreadMessagesCount() {
+        const res = await this.get('/messages/unread-count');
+        const data = res.data || res;
+        return typeof data.unreadCount === 'number' ? data.unreadCount : 0;
+    }
+
     async sendMessage(receiverId, content) {
         return this.post('/messages', {
             data: { receiverId, content }
