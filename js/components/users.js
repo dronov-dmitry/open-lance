@@ -114,15 +114,6 @@ window.router.register('users', async () => {
     };
     
     try {
-        // Fetch specializations list first
-        let specializationsList = [];
-        try {
-            const specsResponse = await window.api.getSpecializations();
-            specializationsList = (specsResponse.data || specsResponse).specializations || [];
-        } catch (error) {
-            console.error('[Users] Error loading specializations:', error);
-        }
-        
         // Build filters object from URL params
         const filters = {};
         if (currentSpecializationFilter) {
@@ -132,10 +123,20 @@ window.router.register('users', async () => {
             filters.sortBy = currentSortBy;
             filters.sortOrder = currentSortOrder;
         }
-        
-        console.log('[Users] Loading users with filters:', filters);
-        const response = await window.api.getUsers(filters);
-        const users = response.data || response;
+
+        // Load users and specializations in parallel so a slow/timeout on one doesn't block the list
+        let specializationsList = [];
+        const [specsResult, usersResult] = await Promise.all([
+            window.api.getSpecializations().then(r => (r.data || r).specializations || []).catch(err => {
+                console.error('[Users] Error loading specializations:', err);
+                return [];
+            }),
+            window.api.getUsers(filters).then(r => r.data || r).catch(err => {
+                throw err;
+            })
+        ]);
+        specializationsList = Array.isArray(specsResult) ? specsResult : [];
+        const users = Array.isArray(usersResult) ? usersResult : [];
 
         // Determine if current user is admin and get their ID
         let isAdmin = false;
