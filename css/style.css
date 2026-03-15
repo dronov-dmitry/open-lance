@@ -161,6 +161,16 @@ body {
 .nav-menu .lang-btn:hover {
     color: var(--primary-color);
 }
+/* Flag image — same look on all devices */
+.nav-menu .lang-btn .lang-flag-img {
+    vertical-align: middle;
+    margin-right: 6px;
+    display: inline-block;
+    object-fit: contain;
+}
+.nav-menu .lang-btn .lang-label {
+    vertical-align: middle;
+}
 
 .nav-unread-badge {
     display: inline-flex;
