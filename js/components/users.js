@@ -76,7 +76,7 @@ window.submitUserReview = async function(userId) {
             window.utils.showToast(errorMsg, 'error');
         }
     } finally {
-        if (btn) { btn.disabled = false; btn.textContent = 'Опубликовать'; }
+        if (btn) { btn.disabled = false; btn.textContent = tr('users.publish'); }
     }
 };
 
@@ -149,8 +149,8 @@ window.router.register('users', async () => {
         if (users.length === 0) {
             return `
                 <div class="users-container">
-                    <h2>Зарегистрированные пользователи</h2>
-                    <p>Пользователей пока нет.</p>
+                    <h2>${tr('users.pageTitle')}</h2>
+                    <p>${tr('users.noUsersYet')}</p>
                 </div>
             `;
         }
@@ -184,19 +184,20 @@ window.router.register('users', async () => {
             let roleClass = 'freelancer';
 
             if (user.role === 'ADMIN') {
-                roleText = 'Администратор';
+                roleText = tr('users.roleAdmin');
                 roleClass = 'admin';
             } else if (user.role === 'client') {
-                roleText = 'Заказчик';
+                roleText = tr('users.roleClient');
             }
 
             const isBanned = user.status === 'BANNED';
-            const banBadge = isBanned ? '<span class="badge error">ЗАБЛОКИРОВАН</span>' : '';
+            const banBadge = isBanned ? '<span class="badge error">' + tr('users.bannedBadge') + '</span>' : '';
+            const displayName = (user.name || tr('users.noName')).replace(/'/g, "\\'");
 
             let actionButtons = `
                 <div class="user-card-actions">
                 <button type="button" data-profile-id="${user.user_id}" class="btn btn-secondary btn-profile-link" style="font-size: 0.8rem; padding: 5px 10px;">
-                    Подробнее
+                    ${tr('users.more')}
                 </button>
             `;
 
@@ -204,8 +205,8 @@ window.router.register('users', async () => {
 
             if (isOtherUser) {
                 actionButtons += `
-                    <button onclick="window.router.navigate('messages'); setTimeout(() => window.showReplyBox('${user.user_id}', '${(user.name || 'Без имени').replace(/'/g, "\\'")}'), 100);" class="btn btn-primary" style="font-size: 0.8rem; padding: 5px 10px;">
-                        ✉️ Написать сообщение
+                    <button onclick="window.router.navigate('messages'); setTimeout(() => window.showReplyBox('${user.user_id}', '${displayName}'), 100);" class="btn btn-primary" style="font-size: 0.8rem; padding: 5px 10px;">
+                        ✉️ ${tr('users.writeMessage')}
                     </button>
                 `;
             }
@@ -215,41 +216,42 @@ window.router.register('users', async () => {
             if (isOtherUser && canReview) {
                 actionButtons += `
                     <button onclick="window.toggleUserReviewForm('${user.user_id}')" class="btn btn-outline" style="font-size: 0.8rem; padding: 5px 10px; color: #2c3e50; border-color: #2c3e50;">
-                        ⭐ Отзыв
+                        ⭐ ${tr('users.reviewBtn')}
                     </button>
                 `;
             }
             const reviewFormHtml = (isOtherUser && canReview) ? `
                 <div id="user-review-form-${user.user_id}" style="display: none; margin-top: 12px; padding: 12px; border: 1px solid #f39c12; border-radius: 8px; background: #fffdf5;">
-                    <strong style="display: block; margin-bottom: 8px; font-size: 0.9rem;">Оставить отзыв</strong>
+                    <strong style="display: block; margin-bottom: 8px; font-size: 0.9rem;">${tr('users.leaveReviewTitle')}</strong>
                     <select id="user-review-rating-${user.user_id}" style="width: 100%; padding: 6px; border: 1px solid #ced4da; border-radius: 4px; margin-bottom: 8px; font-family: inherit;">
-                        <option value="5">⭐⭐⭐⭐⭐ (5) Отлично</option>
-                        <option value="4">⭐⭐⭐⭐ (4) Хорошо</option>
-                        <option value="3">⭐⭐⭐ (3) Нормально</option>
-                        <option value="2">⭐⭐ (2) Плохо</option>
-                        <option value="1">⭐ (1) Ужасно</option>
+                        <option value="5">⭐⭐⭐⭐⭐ (5) ${tr('profile.rating5')}</option>
+                        <option value="4">⭐⭐⭐⭐ (4) ${tr('profile.rating4')}</option>
+                        <option value="3">⭐⭐⭐ (3) ${tr('profile.rating3')}</option>
+                        <option value="2">⭐⭐ (2) ${tr('profile.rating2')}</option>
+                        <option value="1">⭐ (1) ${tr('profile.rating1')}</option>
                     </select>
-                    <textarea id="user-review-text-${user.user_id}" rows="3" placeholder="Расскажите об опыте работы с пользователем..." style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-family: inherit; resize: vertical; margin-bottom: 8px;"></textarea>
+                    <textarea id="user-review-text-${user.user_id}" rows="3" placeholder="${tr('users.reviewPlaceholder')}" style="width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-family: inherit; resize: vertical; margin-bottom: 8px;"></textarea>
                     <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                        <button onclick="window.toggleUserReviewForm('${user.user_id}')" class="btn btn-outline" style="font-size: 0.8rem; padding: 5px 12px; color: #2c3e50; border-color: #2c3e50;">Отмена</button>
-                        <button onclick="window.submitUserReview('${user.user_id}')" class="btn btn-primary" style="font-size: 0.8rem; padding: 5px 12px;">Опубликовать</button>
+                        <button onclick="window.toggleUserReviewForm('${user.user_id}')" class="btn btn-outline" style="font-size: 0.8rem; padding: 5px 12px; color: #2c3e50; border-color: #2c3e50;">${tr('users.cancel')}</button>
+                        <button onclick="window.submitUserReview('${user.user_id}')" class="btn btn-primary" style="font-size: 0.8rem; padding: 5px 12px;">${tr('users.publish')}</button>
                     </div>
                 </div>
             ` : '';
 
             if (isAdmin) {
                 actionButtons += `</div><div class="admin-controls" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color); display: flex; gap: 10px;">
-                        ${user.role !== 'ADMIN' ? `<button onclick="window.makeAdmin('${user.user_id}')" class="btn btn-outline" style="font-size: 0.8rem; padding: 5px 10px; color: #2c3e50; border-color: #2c3e50;">Сделать админом</button>` : ''}
-                        ${!isBanned ? `<button onclick="window.banUser('${user.user_id}')" class="btn btn-outline" style="font-size: 0.8rem; padding: 5px 10px; border-color: var(--error-color); color: var(--error-color);">Заблокировать</button>` : ''}
+                        ${user.role !== 'ADMIN' ? `<button onclick="window.makeAdmin('${user.user_id}')" class="btn btn-outline" style="font-size: 0.8rem; padding: 5px 10px; color: #2c3e50; border-color: #2c3e50;">${tr('users.makeAdmin')}</button>` : ''}
+                        ${!isBanned ? `<button onclick="window.banUser('${user.user_id}')" class="btn btn-outline" style="font-size: 0.8rem; padding: 5px 10px; border-color: var(--error-color); color: var(--error-color);">${tr('users.banUser')}</button>` : ''}
                     </div>`;
             } else {
                 actionButtons += `</div>`;
             }
 
+            const perHourText = tr('users.perHour');
             usersHtml += `
                 <div class="user-card card ${isBanned ? 'banned' : ''}" style="${isBanned ? 'opacity: 0.6;' : ''}">
                     <div class="user-header">
-                        <h3>${user.name || 'Без имени'} <span class="badge ${roleClass}">${roleText}</span> ${banBadge}</h3>
+                        <h3>${user.name || tr('users.noName')} <span class="badge ${roleClass}">${roleText}</span> ${banBadge}</h3>
                         <p class="user-email">${user.email}</p>
                         ${user.title ? `<p style="color: var(--primary-color); font-weight: 500; margin-top: 8px; margin-bottom: 0; font-size: 0.95rem;">💼 ${user.title}</p>` : ''}
                     </div>
@@ -262,22 +264,22 @@ window.router.register('users', async () => {
                         ` : ''}
                         <div class="user-stats-row">
                             <div class="stat">
-                                <span class="stat-label">Рейтинг заказчика:</span>
+                                <span class="stat-label">${tr('users.ratingClientLabel')}</span>
                                 <span class="stat-val">${user.rating_as_client ? user.rating_as_client.toFixed(1) : '—'}</span>
                             </div>
                             <div class="stat">
-                                <span class="stat-label">Рейтинг фрилансера:</span>
+                                <span class="stat-label">${tr('users.ratingWorkerLabel')}</span>
                                 <span class="stat-val">${user.rating_as_worker ? user.rating_as_worker.toFixed(1) : '—'}</span>
                             </div>
                         </div>
                     </div>
-										<div class="user-card-actions">
+									<div class="user-card-actions">
 											<div>
 											${actionButtons}
 											${reviewFormHtml}
 											</div>
 											<div>
-											${user.hourly_rate ? `<p class="user-header-rate" style="color: #27ae60; font-weight: 500; margin-top: 5px; margin-bottom: 0; font-size: 0.9rem;">💰 ${window.utils.formatCurrency ? window.utils.formatCurrency(user.hourly_rate) + ' в час' : user.hourly_rate.toLocaleString('ru-RU') + ' ₽ в час'}</p>` : ''}
+											${user.hourly_rate ? `<p class="user-header-rate" style="color: #27ae60; font-weight: 500; margin-top: 5px; margin-bottom: 0; font-size: 0.9rem;">💰 ${window.utils.formatCurrency ? window.utils.formatCurrency(user.hourly_rate) + ' ' + perHourText : user.hourly_rate.toLocaleString('ru-RU') + ' ₽ ' + perHourText}</p>` : ''}
 											</div>
 										</div>
                 </div>
@@ -286,19 +288,20 @@ window.router.register('users', async () => {
 
         usersHtml += '</div>';
 
+        const userCountWord = users.length === 1 ? tr('users.userCountOne') : (users.length < 5 ? tr('users.userCountFew') : tr('users.userCountMany'));
         return `
             <div class="users-container">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
-                    <h2 style="margin: 0;">Зарегистрированные пользователи</h2>
+                    <h2 style="margin: 0;">${tr('users.pageTitle')}</h2>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <div style="display: flex; gap: 10px; align-items: center;">
-                            <label for="users-specialization-filter" style="font-weight: 500; white-space: nowrap;">Специализация:</label>
+                            <label for="users-specialization-filter" style="font-weight: 500; white-space: nowrap;">${tr('users.specializationLabel')}</label>
                             <select 
                                 id="users-specialization-filter" 
                                 style="padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; min-width: 200px; background: white;"
                                 onchange="window.applyUsersFilter()"
                             >
-                                <option value="">Все специализации</option>
+                                <option value="">${tr('users.allSpecializations')}</option>
                                 ${specializationsList.map(spec => `
                                     <option value="${spec}" ${currentSpecializationFilter === spec ? 'selected' : ''}>${spec}</option>
                                 `).join('')}
@@ -309,21 +312,21 @@ window.router.register('users', async () => {
                                     class="btn btn-outline"
                                     style="padding: 8px 16px; white-space: nowrap; color: #2c3e50; border-color: #2c3e50;"
                                 >
-                                    ✕ Сбросить
+                                    ✕ ${tr('users.resetFilter')}
                                 </button>
                             ` : ''}
                         </div>
                         <div style="display: flex; gap: 10px; align-items: center;">
-                            <label for="users-sort-by" style="font-weight: 500; white-space: nowrap;">Сортировать по:</label>
+                            <label for="users-sort-by" style="font-weight: 500; white-space: nowrap;">${tr('users.sortBy')}</label>
                             <select 
                                 id="users-sort-by" 
                                 style="padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; min-width: 180px; background: white;"
                                 onchange="window.applyUsersFilter()"
                             >
-                                <option value="">Без сортировки</option>
-                                <option value="rating_as_worker" ${currentSortBy === 'rating_as_worker' ? 'selected' : ''}>Рейтинг фрилансера</option>
-                                <option value="rating_as_client" ${currentSortBy === 'rating_as_client' ? 'selected' : ''}>Рейтинг заказчика</option>
-                                <option value="hourly_rate" ${currentSortBy === 'hourly_rate' ? 'selected' : ''}>Стоимость в час</option>
+                                <option value="">${tr('users.noSort')}</option>
+                                <option value="rating_as_worker" ${currentSortBy === 'rating_as_worker' ? 'selected' : ''}>${tr('users.sortRatingWorker')}</option>
+                                <option value="rating_as_client" ${currentSortBy === 'rating_as_client' ? 'selected' : ''}>${tr('users.sortRatingClient')}</option>
+                                <option value="hourly_rate" ${currentSortBy === 'hourly_rate' ? 'selected' : ''}>${tr('users.sortHourlyRate')}</option>
                             </select>
                             ${currentSortBy ? `
                                 <select 
@@ -331,8 +334,8 @@ window.router.register('users', async () => {
                                     style="padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; min-width: 140px; background: white;"
                                     onchange="window.applyUsersFilter()"
                                 >
-                                    <option value="desc" ${currentSortOrder === 'desc' ? 'selected' : ''}>По убыванию</option>
-                                    <option value="asc" ${currentSortOrder === 'asc' ? 'selected' : ''}>По возрастанию</option>
+                                    <option value="desc" ${currentSortOrder === 'desc' ? 'selected' : ''}>${tr('users.sortDesc')}</option>
+                                    <option value="asc" ${currentSortOrder === 'asc' ? 'selected' : ''}>${tr('users.sortAsc')}</option>
                                 </select>
                             ` : ''}
                         </div>
@@ -340,11 +343,11 @@ window.router.register('users', async () => {
                 </div>
                 ${users.length === 0 ? `
                     <div style="text-align: center; padding: 40px; color: #7f8c8d;">
-                        <p>Пользователи не найдены${currentSpecializationFilter ? ' по выбранной специализации' : ''}.</p>
-                        ${currentSpecializationFilter ? '<p>Попробуйте выбрать другую специализацию.</p>' : ''}
+                        <p>${tr('users.noUsersFound')}${currentSpecializationFilter ? ' ' + tr('users.noUsersBySpec') : ''}.</p>
+                        ${currentSpecializationFilter ? '<p>' + tr('users.tryOtherSpec') + '</p>' : ''}
                     </div>
                 ` : `
-                    <p style="color: #7f8c8d; margin-bottom: 20px;">Найдено: ${users.length} ${users.length === 1 ? 'пользователь' : users.length < 5 ? 'пользователя' : 'пользователей'}</p>
+                    <p style="color: #7f8c8d; margin-bottom: 20px;">${tr('users.found')} ${users.length} ${userCountWord}</p>
                     ${usersHtml}
                 `}
             </div>
@@ -353,8 +356,8 @@ window.router.register('users', async () => {
         console.error('[Users] Error loading users:', error);
         return `
             <div class="users-container">
-                <h2>Зарегистрированные пользователи</h2>
-                <p class="error">Ошибка при загрузке пользователей: ${error.message}</p>
+                <h2>${tr('users.pageTitle')}</h2>
+                <p class="error">${tr('users.loadError')}: ${error.message}</p>
             </div>
         `;
     }
