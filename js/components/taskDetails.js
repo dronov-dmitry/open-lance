@@ -1,11 +1,12 @@
 // Task details page component
 window.router.register('task-details', async function(props) {
+    const tr = window.i18n && window.i18n.t ? window.i18n.t.bind(window.i18n) : (k) => k;
     if (!props || !props.id) {
         return `
             <div class="empty-state">
-                <h3>Ошибка</h3>
-                <p>Задача не найдена или ID не указан</p>
-                <button onclick="window.router.navigate('tasks')" class="btn btn-primary">Вернуться к задачам</button>
+                <h3>${tr('taskDetails.error')}</h3>
+                <p>${tr('taskDetails.taskNotFound')}</p>
+                <button onclick="window.router.navigate('tasks')" class="btn btn-primary">${tr('taskDetails.backToTasks')}</button>
             </div>
         `;
     }
@@ -52,10 +53,10 @@ window.router.register('task-details', async function(props) {
         }
 
         const statusMap = {
-            'OPEN': 'Открыта',
-            'MATCHED': 'В работе',
-            'COMPLETED': 'Завершена',
-            'CANCELLED': 'Отменена'
+            'OPEN': tr('status.OPEN'),
+            'MATCHED': tr('status.MATCHED'),
+            'COMPLETED': tr('status.COMPLETED'),
+            'CANCELLED': tr('status.CANCELLED')
         };
 
         const statusClass = `status-${(task.status || 'OPEN').toLowerCase()}`;
@@ -97,17 +98,16 @@ window.router.register('task-details', async function(props) {
 
         if ((task.status === 'OPEN' || (task.status === 'MATCHED' && isWorker)) && window.auth.isLoggedIn() && !isOwner) {
             if (myApplication) {
-                // User has already applied
                 const statusStyles = {
-                    'PENDING': { color: '#f39c12', text: 'Ожидает рассмотрения' },
-                    'ACCEPTED': { color: '#2ecc71', text: 'Вы приняты на выполнение задачи' },
-                    'REJECTED': { color: '#e74c3c', text: 'Отклонен' }
+                    'PENDING': { color: '#f39c12', text: tr('status.pendingReview') },
+                    'ACCEPTED': { color: '#2ecc71', text: tr('status.youAccepted') },
+                    'REJECTED': { color: '#e74c3c', text: tr('status.REJECTED') }
                 };
                 const appStatus = statusStyles[myApplication.status] || { color: '#7f8c8d', text: myApplication.status };
 
                 actionFormHtml = `
                     <div class="card" style="margin-top: 2rem;">
-                        <h3>Ваш отклик</h3>
+                        <h3>${tr('taskDetails.yourResponse')}</h3>
                         <div style="margin-top: 15px; padding: 15px; border: 1px solid #eee; border-radius: 8px; background: #fafafa;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                                 <strong style="color: ${appStatus.color};">${appStatus.text}</strong>
@@ -119,8 +119,8 @@ window.router.register('task-details', async function(props) {
                                 
                                 ${myApplication.status === 'PENDING' ? `
                                     <div style="display: flex; gap: 10px; border-top: 1px solid #eee; padding-top: 15px;">
-                                        <button onclick="window.toggleEditMyApplication()" class="btn btn-outline" style="color: #2c3e50; border-color: #2c3e50;">Изменить отклик</button>
-                                        <button onclick="window.withdrawMyApplication('${myApplication.application_id}', '${taskId}')" class="btn btn-outline" style="color: #e74c3c; border-color: #e74c3c;">Отозвать отклик</button>
+                                        <button onclick="window.toggleEditMyApplication()" class="btn btn-outline" style="color: #2c3e50; border-color: #2c3e50;">${tr('taskDetails.changeResponse')}</button>
+                                        <button onclick="window.withdrawMyApplication('${myApplication.application_id}', '${taskId}')" class="btn btn-outline" style="color: #e74c3c; border-color: #e74c3c;">${tr('taskDetails.withdrawResponse')}</button>
                                     </div>
                                 ` : ''}
                             </div>
@@ -129,8 +129,8 @@ window.router.register('task-details', async function(props) {
                                 <form onsubmit="window.saveMyApplication(event, '${myApplication.application_id}')">
                                     <textarea id="editApplicationMessage" required rows="4" style="width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; font-family: inherit; resize: vertical; margin-bottom: 15px;">${myApplication.message}</textarea>
                                     <div style="display: flex; gap: 10px;">
-                                        <button type="submit" class="btn btn-primary">Сохранить изменения</button>
-                                        <button type="button" onclick="window.toggleEditMyApplication()" class="btn btn-outline" style="color: #2c3e50; border-color: #2c3e50;">Отмена</button>
+                                        <button type="submit" class="btn btn-primary">${tr('taskDetails.saveChanges')}</button>
+                                        <button type="button" onclick="window.toggleEditMyApplication()" class="btn btn-outline" style="color: #2c3e50; border-color: #2c3e50;">${tr('taskDetails.cancel')}</button>
                                     </div>
                                 </form>
                             </div>
@@ -138,16 +138,15 @@ window.router.register('task-details', async function(props) {
                     </div>
                 `;
             } else {
-                // User hasn't applied yet
                 actionFormHtml = `
                     <div class="card" style="margin-top: 2rem;">
-                        <h3>Откликнуться на задачу</h3>
+                        <h3>${tr('taskDetails.applyToTask')}</h3>
                         <form id="applyTaskForm" onsubmit="submitApplication(event, '${taskId}')">
                             <div class="form-group" style="margin-top: 1rem;">
-                                <label for="applyMessage">Сообщение заказчику</label>
-                                <textarea id="applyMessage" required rows="4" placeholder="Опишите ваш опыт и почему вы подходите для этой задачи..."></textarea>
+                                <label for="applyMessage">${tr('taskDetails.messageToCustomer')}</label>
+                                <textarea id="applyMessage" required rows="4" placeholder="${tr('taskDetails.applyPlaceholder')}"></textarea>
                             </div>
-                            <button type="submit" class="btn btn-primary">Отправить отклик</button>
+                            <button type="submit" class="btn btn-primary">${tr('taskDetails.sendResponse')}</button>
                         </form>
                     </div>
                 `;
@@ -155,8 +154,8 @@ window.router.register('task-details', async function(props) {
         } else if (!window.auth.isLoggedIn()) {
             actionFormHtml = `
                 <div class="card" style="margin-top: 2rem; text-align: center;">
-                    <p style="margin-bottom: 1rem;">Авторизуйтесь, чтобы откликнуться на задачу</p>
-                    <button onclick="window.auth.openLoginModal()" class="btn btn-primary">Войти</button>
+                    <p style="margin-bottom: 1rem;">${tr('common.authRequired')}</p>
+                    <button onclick="window.auth.openLoginModal()" class="btn btn-primary">${tr('nav.login')}</button>
                 </div>
             `;
         } else if (isOwner) {

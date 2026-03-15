@@ -145,6 +145,23 @@ body {
     color: var(--primary-color);
 }
 
+/* Language switcher button — same look as nav links */
+.nav-menu .lang-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--dark-color);
+    font-weight: 500;
+    font-size: inherit;
+    font-family: inherit;
+    text-decoration: none;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.nav-menu .lang-btn:hover {
+    color: var(--primary-color);
+}
+
 .nav-unread-badge {
     display: inline-flex;
     align-items: center;
@@ -189,7 +206,8 @@ body {
     }
 
     .nav-menu a,
-    .nav-menu .btn {
+    .nav-menu .btn,
+    .nav-menu .lang-btn {
         padding: 14px 20px;
         min-height: 48px;
         display: flex;

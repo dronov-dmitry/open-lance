@@ -7,6 +7,13 @@
     <title>Open-Lance - Freelance Marketplace</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .lang-switcher { position: relative; display: inline-block; }
+        .lang-dropdown { display: none; position: absolute; top: 100%; right: 0; margin-top: 4px; background: var(--bg-color, #fff); border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; min-width: 140px; }
+        .lang-dropdown.show { display: block; }
+        .lang-dropdown button { display: block; width: 100%; padding: 8px 14px; border: none; background: none; text-align: left; cursor: pointer; font-size: 0.9rem; }
+        .lang-dropdown button:hover { background: rgba(0,0,0,0.06); }
+    </style>
 </head>
 <body>
     <!-- Navigation -->
@@ -21,13 +28,22 @@
                 <span class="nav-toggle-bar"></span>
             </button>
             <div class="nav-menu" id="navMenu">
-                <a href="#" data-page="home">Главная</a>
-                <a href="#" data-page="tasks">Задачи</a>
-                <a href="#" data-page="my-tasks">Мои задачи</a>
-                <a href="#" data-page="users">Фрилансеры</a>
-                <a href="#" data-page="messages">Сообщения</a>
-                <a href="#" data-page="profile">Профиль</a>
-                <button id="authBtn" class="btn btn-primary">Войти</button>
+                <div class="lang-switcher">
+                    <button type="button" class="lang-btn" id="langBtn" aria-label="Language"></button>
+                    <div class="lang-dropdown" id="langDropdown">
+                        <button type="button" data-lang="ru">Русский</button>
+                        <button type="button" data-lang="uk">Українська</button>
+                        <button type="button" data-lang="de">Deutsch</button>
+                        <button type="button" data-lang="en">English</button>
+                    </div>
+                </div>
+                <a href="#" data-page="home" data-i18n="nav.home">Главная</a>
+                <a href="#" data-page="tasks" data-i18n="nav.tasks">Задачи</a>
+                <a href="#" data-page="my-tasks" data-i18n="nav.myTasks">Мои задачи</a>
+                <a href="#" data-page="users" data-i18n="nav.freelancers">Фрилансеры</a>
+                <a href="#" data-page="messages" data-i18n="nav.messages">Сообщения</a>
+                <a href="#" data-page="profile" data-i18n="nav.profile">Профиль</a>
+                <button id="authBtn" class="btn btn-primary" data-i18n="nav.login">Войти</button>
             </div>
         </div>
     </nav>
@@ -41,31 +57,31 @@
     <div id="loginModal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
-            <h2>Вход в систему</h2>
+            <h2 data-i18n="auth.loginTitle">Вход в систему</h2>
             <form id="loginForm">
                 <div class="form-group">
-                    <label for="email">Email</label>
+                    <label for="email" data-i18n="auth.email">Email</label>
                     <input type="email" id="email" required>
                 </div>
                 <div class="form-group">
-                    <label for="password">Пароль</label>
+                    <label for="password" data-i18n="auth.password">Пароль</label>
                     <input type="password" id="password" required>
                 </div>
                 <div id="turnstile-login-container" class="form-group" style="min-height: 65px;"></div>
-                <button type="submit" class="btn btn-primary">Войти</button>
+                <button type="submit" class="btn btn-primary" data-i18n="auth.loginBtn">Войти</button>
                 <div id="resendVerificationContainer" style="display: none; margin-top: 15px; padding: 15px; background: #fff3cd; border-radius: 5px; border: 1px solid #ffc107;">
                     <p style="margin: 0 0 10px 0; color: #856404;">
-                        <strong>Email не подтвержден</strong>
+                        <strong data-i18n="auth.emailNotVerified">Email не подтвержден</strong>
                     </p>
-                    <p style="margin: 0 0 10px 0; color: #856404; font-size: 14px;">
+                    <p style="margin: 0 0 10px 0; color: #856404; font-size: 14px;" data-i18n="auth.resendVerifyText">
                         Email не подтвержден. Нажмите кнопку ниже, чтобы отправить письмо для подтверждения email повторно.
                     </p>
-                    <button type="button" id="resendVerificationBtn" class="btn" style="background: #ffc107; color: #000; border: none; padding: 8px 16px; font-size: 14px;">
+                    <button type="button" id="resendVerificationBtn" class="btn" style="background: #ffc107; color: #000; border: none; padding: 8px 16px; font-size: 14px;" data-i18n="auth.resendBtn">
                         Отправить письмо повторно
                     </button>
                 </div>
                 <p class="form-footer">
-                    Нет аккаунта? <a href="#" id="showRegister">Зарегистрироваться</a>
+                    <span data-i18n="auth.noAccount">Нет аккаунта?</span> <a href="#" id="showRegister" data-i18n="auth.registerLink">Зарегистрироваться</a>
                 </p>
             </form>
         </div>
@@ -75,31 +91,31 @@
     <div id="registerModal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
-            <h2>Регистрация</h2>
+            <h2 data-i18n="auth.registerTitle">Регистрация</h2>
             <form id="registerForm">
                 <div class="form-group">
-                    <label for="regEmail">Email</label>
+                    <label for="regEmail" data-i18n="auth.email">Email</label>
                     <input type="email" id="regEmail" required>
                 </div>
                 <div class="form-group">
-                    <label for="regPassword">Пароль</label>
+                    <label for="regPassword" data-i18n="auth.password">Пароль</label>
                     <input type="password" id="regPassword" required>
                 </div>
                 <div class="form-group">
-                    <label for="regPasswordConfirm">Подтвердите пароль</label>
+                    <label for="regPasswordConfirm" data-i18n="auth.confirmPassword">Подтвердите пароль</label>
                     <input type="password" id="regPasswordConfirm" required>
                 </div>
                 <div id="resendVerificationRegisterContainer" style="display: none; margin-bottom: 15px; padding: 15px; background: #fff3cd; border-radius: 5px; border: 1px solid #ffc107;">
-                    <p style="margin: 0 0 10px 0; color: #856404; font-size: 14px;">
+                    <p style="margin: 0 0 10px 0; color: #856404; font-size: 14px;" data-i18n="auth.userExistsResend">
                         Пользователь с таким email уже существует. Возможно, email не был подтвержден. Нажмите кнопку ниже, чтобы отправить письмо повторно.
                     </p>
-                    <button type="button" id="resendVerificationRegisterBtn" class="btn" style="background: #ffc107; color: #000; border: none; padding: 8px 16px; font-size: 14px; width: 100%;">
+                    <button type="button" id="resendVerificationRegisterBtn" class="btn" style="background: #ffc107; color: #000; border: none; padding: 8px 16px; font-size: 14px; width: 100%;" data-i18n="auth.resendBtn">
                         Отправить письмо повторно
                     </button>
                 </div>
-                <button type="submit" class="btn btn-primary">Зарегистрироваться</button>
+                <button type="submit" class="btn btn-primary" data-i18n="auth.registerBtn">Зарегистрироваться</button>
                 <p class="form-footer">
-                    Уже есть аккаунт? <a href="#" id="showLogin">Войти</a>
+                    <span data-i18n="auth.hasAccount">Уже есть аккаунт?</span> <a href="#" id="showLogin" data-i18n="auth.loginBtn">Войти</a>
                 </p>
             </form>
         </div>
@@ -109,29 +125,29 @@
     <div id="createTaskModal" class="modal">
         <div class="modal-content" style="max-width: 600px;">
             <span class="close">&times;</span>
-            <h2>Создать задачу</h2>
+            <h2 data-i18n="createTask.title">Создать задачу</h2>
             <form id="createTaskForm">
                 <div class="form-group">
-                    <label for="taskTitle">Название задачи*</label>
-                    <input type="text" id="taskTitle" required placeholder="Например: Разработать лендинг">
+                    <label for="taskTitle" data-i18n="createTask.taskTitle">Название задачи*</label>
+                    <input type="text" id="taskTitle" required data-i18n-placeholder="createTask.taskTitlePlaceholder" placeholder="Например: Разработать лендинг">
                 </div>
                 <div class="form-group">
-                    <label for="taskDescription">Описание*</label>
-                    <textarea id="taskDescription" required rows="5" placeholder="Подробно опишите задачу..."></textarea>
+                    <label for="taskDescription" data-i18n="createTask.description">Описание*</label>
+                    <textarea id="taskDescription" required rows="5" data-i18n-placeholder="createTask.descriptionPlaceholder" placeholder="Подробно опишите задачу..."></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="taskBudget">Бюджет (₽)*</label>
-                    <input type="number" id="taskBudget" required min="0" placeholder="5000">
+                    <label for="taskBudget" data-i18n="createTask.budget">Бюджет (₽)*</label>
+                    <input type="number" id="taskBudget" required min="0" data-i18n-placeholder="createTask.budgetPlaceholder" placeholder="5000">
                 </div>
                 <div class="form-group">
-                    <label for="taskDeadline">Срок выполнения*</label>
+                    <label for="taskDeadline" data-i18n="createTask.deadline">Срок выполнения*</label>
                     <input type="date" id="taskDeadline" required>
                 </div>
                 <div class="form-group">
-                    <label for="taskSkills">Требуемые навыки (через запятую)</label>
-                    <input type="text" id="taskSkills" placeholder="JavaScript, React, Node.js">
+                    <label for="taskSkills" data-i18n="createTask.skills">Требуемые навыки (через запятую)</label>
+                    <input type="text" id="taskSkills" data-i18n-placeholder="createTask.skillsPlaceholder" placeholder="JavaScript, React, Node.js">
                 </div>
-                <button type="submit" class="btn btn-primary">Создать задачу</button>
+                <button type="submit" class="btn btn-primary" data-i18n="createTask.title">Создать задачу</button>
             </form>
         </div>
     </div>
@@ -142,6 +158,7 @@
     <!-- Cloudflare Turnstile (captcha) -->
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     <!-- Scripts -->
+    <script src="js/i18n.js"></script>
     <script src="js/config.js"></script>
     <script src="js/api.js"></script>
     <script src="js/auth.js"></script>

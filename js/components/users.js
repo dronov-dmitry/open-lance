@@ -1,23 +1,23 @@
 // Users Component
+function tr(key) { return window.i18n && window.i18n.t ? window.i18n.t(key) : key; }
 
-// Admin Action Handlers
 window.makeAdmin = async (userId) => {
-    if (!confirm('Вы уверены, что хотите назначить этого пользователя администратором?')) return;
+    if (!confirm(tr('users.confirmMakeAdmin'))) return;
     try {
         await window.api.updateUserRole(userId, 'ADMIN');
-        window.utils.showToast('Роль успешно обновлена', 'success');
-        window.router.navigate('users'); // Refresh
+        window.utils.showToast(tr('users.roleUpdated'), 'success');
+        window.router.navigate('users');
     } catch (error) {
         window.utils.showToast(error.message, 'error');
     }
 };
 
 window.banUser = async (userId) => {
-    if (!confirm('Вы уверены, что хотите заблокировать этого пользователя?')) return;
+    if (!confirm(tr('users.confirmBan'))) return;
     try {
         await window.api.updateUserStatus(userId, 'BANNED');
-        window.utils.showToast('Пользователь заблокирован', 'success');
-        window.router.navigate('users'); // Refresh
+        window.utils.showToast(tr('users.userBanned'), 'success');
+        window.router.navigate('users');
     } catch (error) {
         window.utils.showToast(error.message, 'error');
     }
@@ -34,50 +34,44 @@ window.toggleUserReviewForm = function(userId) {
 // Submit review directly from users list
 window.submitUserReview = async function(userId) {
     if (!window.auth.isLoggedIn()) {
-        window.utils.showToast('Войдите в систему, чтобы оставить отзыв', 'warning');
+        window.utils.showToast(tr('users.loginToReview'), 'warning');
         window.auth.openLoginModal();
         return;
     }
-
-    // Check if can review
     try {
         const canReviewResp = await window.api.canReviewUser(userId);
         const canReview = (canReviewResp.data || canReviewResp).canReview;
         if (!canReview) {
-            const reason = (canReviewResp.data || canReviewResp).reason || 'Вы не можете оставить отзыв этому пользователю';
+            const reason = (canReviewResp.data || canReviewResp).reason || tr('users.cannotReview');
             window.utils.showToast(reason, 'warning');
             return;
         }
     } catch (error) {
         console.error('Error checking review eligibility:', error);
-        window.utils.showToast('Ошибка при проверке возможности оставить отзыв', 'error');
+        window.utils.showToast(tr('users.reviewError'), 'error');
         return;
     }
-
     const ratingEl = document.getElementById('user-review-rating-' + userId);
     const textEl   = document.getElementById('user-review-text-'   + userId);
     const rating  = parseInt(ratingEl ? ratingEl.value : '5', 10);
     const comment = textEl ? textEl.value.trim() : '';
-
     if (comment.length < 5) {
-        window.utils.showToast('Отзыв слишком короткий (минимум 5 символов)', 'warning');
+        window.utils.showToast(tr('users.reviewTooShort'), 'warning');
         return;
     }
-
     const btn = document.querySelector('#user-review-form-' + userId + ' .btn-primary');
     try {
-        if (btn) { btn.disabled = true; btn.textContent = 'Отправка...'; }
+        if (btn) { btn.disabled = true; btn.textContent = (window.i18n && window.i18n.t ? window.i18n.t('auth.sending') : 'Отправка...'); }
         await window.api.submitProfileReview(userId, rating, comment);
-        window.utils.showToast('Отзыв успешно добавлен!', 'success');
+        window.utils.showToast(tr('users.reviewSent'), 'success');
         if (textEl) textEl.value = '';
         window.toggleUserReviewForm(userId);
-        // Reload page to update UI
         window.router.navigate('users', {}, { force: true });
     } catch (error) {
         console.error('Error submitting user review:', error);
-        const errorMsg = error.message || 'Ошибка при отправке отзыва';
+        const errorMsg = error.message || tr('users.reviewError');
         if (errorMsg.includes('accepting their application')) {
-            window.utils.showToast('Вы можете оставить отзыв только после принятия отклика на задачу', 'warning');
+            window.utils.showToast(tr('users.reviewAfterAccept'), 'warning');
         } else {
             window.utils.showToast(errorMsg, 'error');
         }
@@ -88,7 +82,7 @@ window.submitUserReview = async function(userId) {
 
 window.router.register('users', async () => {
     if (!window.auth.isLoggedIn()) {
-        return window.utils.renderAuthRequired('Войдите в систему, чтобы просматривать список фрилансеров');
+        return window.utils.renderAuthRequired(tr('common.authRequired'));
     }
 
     // Get filter from URL or use default

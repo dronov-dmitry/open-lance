@@ -44,39 +44,23 @@
         
         // Handle form submission
         createTaskForm.addEventListener('submit', async (e) => {
-            const startTime = new Date().toISOString();
-            console.log(`[${startTime}] [CreateTask] Form submitted`);
-            
             e.preventDefault();
-            
-            // Get form data
+            const tr = window.i18n && window.i18n.t ? window.i18n.t.bind(window.i18n) : (k) => k;
             const title = document.getElementById('taskTitle').value.trim();
             const description = document.getElementById('taskDescription').value.trim();
             const budget = parseFloat(document.getElementById('taskBudget').value);
             const deadline = document.getElementById('taskDeadline').value;
             const skillsInput = document.getElementById('taskSkills').value.trim();
-            
-            console.log(`[${startTime}] [CreateTask] Form data:`, { 
-                title, 
-                descriptionLength: description.length, 
-                budget, 
-                deadline,
-                skills: skillsInput
-            });
-            
-            // Validation
             if (!title || !description) {
-                window.utils.showToast('Заполните все обязательные поля', 'error');
+                window.utils.showToast(tr('createTask.fillRequired'), 'error');
                 return;
             }
-            
             if (budget <= 0) {
-                window.utils.showToast('Бюджет должен быть больше нуля', 'error');
+                window.utils.showToast(tr('createTask.budgetPositive'), 'error');
                 return;
             }
-            
             if (!deadline) {
-                window.utils.showToast('Укажите срок выполнения', 'error');
+                window.utils.showToast(tr('createTask.setDeadline'), 'error');
                 return;
             }
             
@@ -97,40 +81,21 @@
             
             const submitBtn = createTaskForm.querySelector('button[type="submit"]');
             submitBtn.disabled = true;
-            submitBtn.textContent = 'Создание...';
-            
+            submitBtn.textContent = '...';
             try {
-                const apiCallTime = new Date().toISOString();
-                console.log(`[${apiCallTime}] [CreateTask] Calling API createTask...`);
-                
                 const response = await window.api.createTask(taskData);
-                
-                const successTime = new Date().toISOString();
-                console.log(`[${successTime}] [CreateTask] Task created successfully:`, response);
-                
-                window.utils.showToast('Задача успешно создана!', 'success');
-                
-                // Invalidate my-tasks cache so the new task appears immediately
+                window.utils.showToast(tr('createTask.created'), 'success');
                 localStorage.removeItem('my-tasks-cache');
                 localStorage.removeItem('my-tasks-cache-time');
-                
-                // Close modal and reset form
                 createTaskModal.classList.remove('active');
                 createTaskForm.reset();
-                
-                // Navigate to my tasks or task details
-                if (response.data && response.data.taskId) {
-                    window.router.navigate('my-tasks');
-                } else {
-                    window.router.navigate('my-tasks');
-                }
+                window.router.navigate('my-tasks');
             } catch (error) {
-                const errorTime = new Date().toISOString();
-                console.error(`[${errorTime}] [CreateTask] Error:`, error);
-                window.utils.showToast(error.message || 'Ошибка при создании задачи', 'error');
+                console.error('[CreateTask] Error:', error);
+                window.utils.showToast(error.message || tr('createTask.createError'), 'error');
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Создать задачу';
+                submitBtn.textContent = tr('createTask.title');
             }
         });
         
