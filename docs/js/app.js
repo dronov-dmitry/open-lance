@@ -22,16 +22,15 @@ window.utils = {
         
         const toast = document.createElement('div');
         
-        // Title based on type
+        const t = window.i18n && window.i18n.t ? window.i18n.t.bind(window.i18n) : (k) => k;
         const titles = {
-            error: '❌ Ошибка',
-            success: '✅ Успешно',
-            warning: '⚠️ Внимание',
-            info: 'ℹ️ Информация'
+            error: '❌ ' + t('toast.error'),
+            success: '✅ ' + t('toast.success'),
+            warning: '⚠️ ' + t('toast.warning'),
+            info: 'ℹ️ ' + t('toast.info')
         };
-        
         toast.innerHTML = `
-            <strong>${titles[type] || 'Информация'}</strong>
+            <strong>${titles[type] || t('toast.info')}</strong>
             <p>${message}</p>
         `;
         
@@ -121,13 +120,14 @@ window.utils = {
     },
     // Единый блок «Необходима авторизация» (DRY)
     renderAuthRequired(message) {
+        const t = window.i18n && window.i18n.t ? window.i18n.t.bind(window.i18n) : (k) => k;
         return `
             <div class="empty-state">
-                <h3>Необходима авторизация</h3>
+                <h3>${t('common.authRequired')}</h3>
                 <p>${message}</p>
-								</br>
+                <br>
                 <button onclick="window.auth.openLoginModal()" class="btn btn-primary">
-                    Войти
+                    ${t('nav.login')}
                 </button>
             </div>
         `;
@@ -152,16 +152,18 @@ window.updateUnreadMessagesBadge = async function(optionalCount) {
     } else {
         count = 0;
     }
+    const t = window.i18n && window.i18n.t ? window.i18n.t.bind(window.i18n) : (k) => k;
     const badge = count > 0
-        ? ' <span class="nav-unread-badge" title="Непрочитанные сообщения">' + (count > 99 ? '99+' : count) + '</span>'
+        ? ' <span class="nav-unread-badge" title="' + t('common.unreadBadge') + '">' + (count > 99 ? '99+' : count) + '</span>'
         : '';
-    link.innerHTML = 'Сообщения' + badge;
+    link.innerHTML = t('nav.messages') + badge;
 };
 
 // Register "My Tasks" route
 window.router.register('my-tasks', async function() {
+    const t = window.i18n && window.i18n.t ? window.i18n.t.bind(window.i18n) : (k) => k;
     if (!window.auth.isLoggedIn()) {
-        return window.utils.renderAuthRequired('Войдите в систему, чтобы просмотреть свои задачи');
+        return window.utils.renderAuthRequired(t('myTasks.authRequired'));
     }
     try {
         // Optimistic loading: показываем кэш сразу, если есть
@@ -213,7 +215,7 @@ window.router.register('my-tasks', async function() {
             document.getElementById('app').innerHTML = `
                 <div style="text-align: center; padding: 3rem;">
                     <div style="display: inline-block; width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-                    <p style="margin-top: 1rem; color: #7f8c8d;">Загрузка ваших задач...</p>
+                    <p style="margin-top: 1rem; color: #7f8c8d;">${t('myTasks.loadMy')}</p>
                 </div>
             `;
             
@@ -237,9 +239,9 @@ window.router.register('my-tasks', async function() {
         
         return `
             <div class="my-tasks-page">
-                <h1 style="margin-bottom: 2rem;">Мои задачи</h1>
+                <h1 style="margin-bottom: 2rem;">${t('myTasks.title')}</h1>
                 <div class="card" style="margin-bottom: 2rem;">
-                    <h2 style="margin-bottom: 1rem;">Мои задания (как заказчик)</h2>
+                    <h2 style="margin-bottom: 1rem;">${t('myTasks.asCustomer')}</h2>
                     ${myTasks && myTasks.length > 0 ? `
                         <div class="grid grid-2">
                             ${myTasks.map(task => `
@@ -254,18 +256,18 @@ window.router.register('my-tasks', async function() {
                                     <div class="task-footer">
                                         <span>${window.utils.formatDate(task.created_at)}</span>
                                         <button onclick="viewTaskDetails('${task.task_id}')" class="btn btn-secondary">
-                                            Подробнее
+                                            ${t('common.more')}
                                         </button>
                                     </div>
                                 </div>
                             `).join('')}
                         </div>
                     ` : `
-                        <p style="color: #7f8c8d;">У вас пока нет созданных задач</p>
+                        <p style="color: #7f8c8d;">${t('myTasks.noCreated')}</p>
                     `}
                 </div>
                 <div class="card">
-                    <h2 style="margin-bottom: 1rem;">Мои отклики (как исполнитель)</h2>
+                    <h2 style="margin-bottom: 1rem;">${t('myTasks.asWorker')}</h2>
                     ${myApplications && myApplications.length > 0 ? `
                         <div class="grid grid-2">
                             ${myApplications.map(app => {
@@ -276,24 +278,24 @@ window.router.register('my-tasks', async function() {
                                 }
                                 return `
                                 <div class="task-card">
-                                    <h3 class="card-title">${app.task_title || (app.task ? app.task.title : 'Задача')}</h3>
+                                    <h3 class="card-title">${app.task_title || (app.task ? app.task.title : t('myTasks.task'))}</h3>
                                     <p style="color: #7f8c8d; margin-bottom: 1rem;">
-                                        Откликнулись: ${window.utils.formatDate(app.created_at || app.updated_at)}
+                                        ${t('myTasks.responded')} ${window.utils.formatDate(app.created_at || app.updated_at)}
                                     </p>
                                     <p style="margin-bottom: 1rem;">
-                                        <strong>Ваше сообщение:</strong><br>
+                                        <strong>${t('myTasks.yourMessage')}</strong><br>
                                         ${app.message}
                                     </p>
                                     <div class="task-footer" style="display: flex; justify-content: space-between; align-items: center;">
                                         <span class="task-status status-${appStatus.toLowerCase()}">${getTaskStatusText(appStatus)}</span>
-                                        ${app.task_id ? `<button onclick="viewTaskDetails('${app.task_id}')" class="btn btn-secondary">Подробнее</button>` : ''}
+                                        ${app.task_id ? `<button onclick="viewTaskDetails('${app.task_id}')" class="btn btn-secondary">${t('common.more')}</button>` : ''}
                                     </div>
                                 </div>
                             `;
                             }).join('')}
                         </div>
                     ` : `
-                        <p style="color: #7f8c8d;">Вы пока не откликались на задачи</p>
+                        <p style="color: #7f8c8d;">${t('myTasks.noApplications')}</p>
                     `}
                 </div>
             </div>
@@ -302,21 +304,17 @@ window.router.register('my-tasks', async function() {
         console.error('Error loading my tasks:', error);
         return `
             <div class="empty-state">
-                <h3>Ошибка загрузки</h3>
+                <h3>${t('myTasks.loadError')}</h3>
                 <p>${error.message}</p>
             </div>
         `;
     }
 });
 function getTaskStatusText(status) {
+    const t = window.i18n && window.i18n.t ? window.i18n.t.bind(window.i18n) : (k) => k;
     const statusMap = {
-        'OPEN': 'Открыта',
-        'MATCHED': 'В работе',
-        'COMPLETED': 'Завершена',
-        'CANCELLED': 'Отменена',
-        'PENDING': 'Ожидает решения',
-        'ACCEPTED': 'Принят',
-        'REJECTED': 'Отклонен'
+        'OPEN': t('status.OPEN'), 'MATCHED': t('status.MATCHED'), 'COMPLETED': t('status.COMPLETED'), 'CANCELLED': t('status.CANCELLED'),
+        'PENDING': t('status.PENDING'), 'ACCEPTED': t('status.ACCEPTED'), 'REJECTED': t('status.REJECTED')
     };
     return statusMap[status] || status;
 }
@@ -337,13 +335,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (window.api && typeof window.api.checkHealth === 'function') {
         try {
             const healthCheck = await window.api.checkHealth();
-            if (!healthCheck.available) {
+                if (!healthCheck.available) {
                 console.error('[App] API недоступен:', healthCheck.error);
                 console.error('[App] API URL:', window.APP_CONFIG?.apiBaseURL);
-                // Show warning but don't block the app
+                const t = window.i18n && window.i18n.t ? window.i18n.t.bind(window.i18n) : (k) => k;
                 if (window.utils && typeof window.utils.showToast === 'function') {
                     window.utils.showToast(
-                        `⚠️ API недоступен: ${healthCheck.error}. Проверьте настройки backend.`,
+                        '⚠️ ' + t('app.apiUnavailable') + ': ' + healthCheck.error + '. ' + t('app.refreshPage'),
                         'error',
                         10000
                     );
@@ -379,12 +377,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 window.history.replaceState({}, document.title, url.pathname + url.search);
             }
 
-            window.utils.showToast('Email успешно подтвержден! Теперь вы можете войти.', 'success');
+            window.utils.showToast((window.i18n && window.i18n.t ? window.i18n.t('auth.verifySuccess') : 'Email успешно подтвержден! Теперь вы можете войти.'), 'success');
             setTimeout(() => {
                 if (window.auth) window.auth.openLoginModal();
             }, 1000);
         } catch (e) {
-            window.utils.showToast(e.message || 'Ошибка подтверждения Email. Возможно, ссылка устарела.', 'error');
+            window.utils.showToast(e.message || (window.i18n && window.i18n.t ? window.i18n.t('auth.verifyError') : 'Ошибка подтверждения Email.'), 'error');
         }
     }
 
@@ -437,6 +435,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (window.auth.isLoggedIn() && typeof window.updateUnreadMessagesBadge === 'function') {
         window.updateUnreadMessagesBadge();
     }
+
+    if (window.i18n) {
+        window.i18n.applyToPage();
+        const langBtn = document.getElementById('langBtn');
+        const langDropdown = document.getElementById('langDropdown');
+        if (langBtn && langDropdown) {
+            langBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                langDropdown.classList.toggle('show');
+            });
+            langDropdown.querySelectorAll('button[data-lang]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    window.i18n.setLang(btn.getAttribute('data-lang'));
+                    langDropdown.classList.remove('show');
+                });
+            });
+            document.addEventListener('click', () => langDropdown.classList.remove('show'));
+        }
+    }
 });
 // Handle global errors (skip Turnstile widget errors to show a specific message)
 window.addEventListener('error', (event) => {
@@ -446,11 +463,12 @@ window.addEventListener('error', (event) => {
         (msg.includes('Turnstile') || msg.includes('400020'));
     if (isTurnstile) {
         var host = window.location.hostname || 'localhost';
-        window.utils.showToast('Капча Turnstile (400020): добавьте в виджет домен «' + host + '». Если открываете по 127.0.0.1 — добавьте и 127.0.0.1.', 'error', 10000);
+        const t = window.i18n && window.i18n.t ? window.i18n.t.bind(window.i18n) : (k) => k;
+        window.utils.showToast(t('app.turnstileDomain') + host + t('app.turnstileAdd'), 'error', 10000);
         event.preventDefault();
         return true;
     }
-    window.utils.showToast('Произошла ошибка. Попробуйте обновить страницу.', 'error');
+    window.utils.showToast(window.i18n && window.i18n.t ? window.i18n.t('app.genericError') : 'Произошла ошибка. Попробуйте обновить страницу.', 'error');
 });
 // Handle unhandled promise rejections (skip Turnstile)
 window.addEventListener('unhandledrejection', (event) => {
@@ -461,9 +479,9 @@ window.addEventListener('unhandledrejection', (event) => {
         (event.reason.message && String(event.reason.message).includes('400020'))
     );
     if (isTurnstile) {
-        window.utils.showToast('Капча Turnstile недоступна. Добавьте домен в Cloudflare: Turnstile -> ваш виджет -> Domains.', 'error', 8000);
+        window.utils.showToast(window.i18n && window.i18n.t ? window.i18n.t('app.turnstileUnavailable') : 'Капча Turnstile недоступна.', 'error', 8000);
         event.preventDefault();
         return;
     }
-    window.utils.showToast('Произошла ошибка при выполнении запроса.', 'error');
+    window.utils.showToast(window.i18n && window.i18n.t ? window.i18n.t('app.requestError') : 'Произошла ошибка при выполнении запроса.', 'error');
 });

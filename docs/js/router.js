@@ -12,8 +12,9 @@ window.router = (function() {
         current = name;
         currentProps = props;
         const app = document.getElementById('app');
+        const t = window.i18n && window.i18n.t ? window.i18n.t.bind(window.i18n) : (k) => k;
         if (!routes[name]) {
-            app.innerHTML = '<h2>Страница не найдена</h2>';
+            app.innerHTML = '<h2>' + t('router.pageNotFound') + '</h2>';
             return;
         }
         app.innerHTML = '<div style="text-align: center; padding: 50px;"><div class="spinner"></div></div>';
@@ -22,7 +23,7 @@ window.router = (function() {
             app.innerHTML = content;
         } catch (e) {
             console.error('Routing error:', e);
-            app.innerHTML = `<div class="error" style="padding: 20px;">Ошибка загрузки страницы: ${e.message}</div>`;
+            app.innerHTML = '<div class="error" style="padding: 20px;">' + t('router.loadError') + ': ' + e.message + '</div>';
         }
     }
 
@@ -57,6 +58,10 @@ window.router = (function() {
 
     function getCurrentParams() {
         return currentProps;
+    }
+
+    function getCurrentRoute() {
+        return { name: current, props: currentProps };
     }
 
     // Handle browser Back/Forward buttons
@@ -94,5 +99,5 @@ window.router = (function() {
         }
     });
 
-    return { register, navigate, getCurrentParams };
+    return { register, navigate, getCurrentParams, getCurrentRoute };
 })();

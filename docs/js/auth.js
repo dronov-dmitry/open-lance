@@ -1,5 +1,6 @@
 // Auth module - handles authentication and modals
 window.auth = (function() {
+    function t(key) { return window.i18n && window.i18n.t ? window.i18n.t(key) : key; }
     // Get token from localStorage
     function getToken() {
         return localStorage.getItem('authToken');
@@ -50,9 +51,9 @@ window.auth = (function() {
         const navMenu = document.getElementById('navMenu');
         
         if (isLoggedIn()) {
-            authBtn.textContent = 'Выйти';
+            authBtn.textContent = (window.i18n && window.i18n.t ? window.i18n.t('nav.logout') : 'Выйти');
             authBtn.onclick = () => {
-                if (confirm('Вы уверены, что хотите выйти?')) {
+                if (confirm(window.i18n && window.i18n.t ? window.i18n.t('auth.confirmLogout') : 'Вы уверены, что хотите выйти?')) {
                     logout();
                 }
             };
@@ -64,7 +65,7 @@ window.auth = (function() {
                 window.updateUnreadMessagesBadge();
             }
         } else {
-            authBtn.textContent = 'Войти';
+            authBtn.textContent = (window.i18n && window.i18n.t ? window.i18n.t('nav.login') : 'Войти');
             authBtn.onclick = () => openLoginModal();
             // Hide protected pages
             const protectedPages = ['my-tasks', 'profile'];
@@ -163,21 +164,20 @@ window.auth = (function() {
 
         resendVerificationBtn.onclick = async () => {
             if (!currentEmailForResend) {
-                window.utils.showToast('Email не указан', 'error');
+                window.utils.showToast(t('auth.emailRequired'), 'error');
                 return;
             }
 
             try {
                 resendVerificationBtn.disabled = true;
-                resendVerificationBtn.textContent = 'Отправка...';
+                resendVerificationBtn.textContent = t('auth.sending');
 
                 const response = await window.api.resendVerificationEmail(currentEmailForResend);
                 
-                // Show success message
                 if (response.emailSent) {
-                    window.utils.showToast('Письмо для подтверждения email отправлено. Проверьте почту.', 'success');
+                    window.utils.showToast(t('auth.resendSuccess'), 'success');
                 } else {
-                    window.utils.showToast(response.message || 'Письмо для подтверждения email отправлено. Проверьте почту.', 'success');
+                    window.utils.showToast(response.message || t('auth.resendSuccess'), 'success');
                 }
                 resendVerificationContainer.style.display = 'none';
             } catch (error) {
@@ -211,7 +211,7 @@ window.auth = (function() {
                 window.utils.showToast(userMessage, 'error', 10000);
             } finally {
                 resendVerificationBtn.disabled = false;
-                resendVerificationBtn.textContent = 'Получить ссылку повторно';
+                resendVerificationBtn.textContent = t('auth.getLinkAgain');
             }
         };
 
@@ -226,14 +226,14 @@ window.auth = (function() {
 
                 try {
                     resendVerificationRegisterBtn.disabled = true;
-                    resendVerificationRegisterBtn.textContent = 'Отправка...';
+                    resendVerificationRegisterBtn.textContent = t('auth.sending');
 
                     const response = await window.api.resendVerificationEmail(email);
                     
                     if (response.emailSent) {
-                        window.utils.showToast('Письмо для подтверждения email отправлено. Проверьте почту.', 'success');
+                        window.utils.showToast(t('auth.resendSuccess'), 'success');
                     } else {
-                        window.utils.showToast(response.message || 'Письмо для подтверждения email отправлено. Проверьте почту.', 'success');
+                        window.utils.showToast(response.message || t('auth.resendSuccess'), 'success');
                     }
                     resendVerificationRegisterContainer.style.display = 'none';
                     setTimeout(() => openLoginModal(), 1000);
@@ -243,7 +243,7 @@ window.auth = (function() {
                     
                     if (error.message) {
                         if (error.message.includes('Email уже подтвержден')) {
-                            userMessage = 'Этот email уже подтвержден. Вы можете войти в систему.';
+                            userMessage = t('auth.emailAlreadyVerified');
                             setTimeout(() => openLoginModal(), 1000);
                         } else if (error.message.includes('500') || error.message.includes('Failed to send') || error.message.includes('EmailJS')) {
                             userMessage = 'Ошибка отправки письма. Проверьте настройки EmailJS или обратитесь в поддержку.';
@@ -254,7 +254,7 @@ window.auth = (function() {
                     window.utils.showToast(userMessage, 'error', 10000);
                 } finally {
                     resendVerificationRegisterBtn.disabled = false;
-                    resendVerificationRegisterBtn.textContent = 'Отправить письмо повторно';
+                    resendVerificationRegisterBtn.textContent = t('auth.resendBtn');
                 }
             };
         }
@@ -268,8 +268,8 @@ window.auth = (function() {
             const turnstileToken = window.APP_CONFIG && window.APP_CONFIG.turnstileSiteKey && typeof window.turnstile !== 'undefined' && window.turnstileLoginWidgetId != null
                 ? window.turnstile.getResponse(window.turnstileLoginWidgetId)
                 : '';
-            if (window.APP_CONFIG && window.APP_CONFIG.turnstileSiteKey && !turnstileToken) {
-                window.utils.showToast('Пожалуйста, пройдите проверку (капча)', 'warning');
+                if (window.APP_CONFIG && window.APP_CONFIG.turnstileSiteKey && !turnstileToken) {
+                window.utils.showToast(t('auth.pleaseCaptcha'), 'warning');
                 return;
             }
 
@@ -280,7 +280,7 @@ window.auth = (function() {
             try {
                 const submitBtn = loginForm.querySelector('button[type="submit"]');
                 submitBtn.disabled = true;
-                submitBtn.textContent = 'Входим...';
+                submitBtn.textContent = t('auth.loggingIn');
 
                 const response = await window.api.login(email, password, turnstileToken);
                 
@@ -291,7 +291,7 @@ window.auth = (function() {
                     if (window.turnstileLoginWidgetId != null && typeof window.turnstile !== 'undefined') {
                         window.turnstile.reset(window.turnstileLoginWidgetId);
                     }
-                    window.utils.showToast('Вы успешно вошли в систему!', 'success');
+                    window.utils.showToast(t('auth.loginSuccess'), 'success');
                     window.router.navigate('tasks');
                 } else {
                     throw new Error('Не получен токен авторизации');
@@ -313,7 +313,7 @@ window.auth = (function() {
             } finally {
                 const submitBtn = loginForm.querySelector('button[type="submit"]');
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Войти';
+                submitBtn.textContent = t('auth.loginBtn');
             }
         };
 
@@ -337,13 +337,13 @@ window.auth = (function() {
 
             if (password !== passwordConfirm) {
                 console.log(`[${startTime}] [Register Form] Password mismatch`);
-                window.utils.showToast('Пароли не совпадают', 'error');
+                window.utils.showToast(t('auth.passMismatch'), 'error');
                 return;
             }
 
             if (password.length < 6) {
                 console.log(`[${startTime}] [Register Form] Password too short`);
-                window.utils.showToast('Пароль должен быть не менее 6 символов', 'error');
+                window.utils.showToast(t('auth.passMinLength'), 'error');
                 return;
             }
 
@@ -352,18 +352,16 @@ window.auth = (function() {
             
             try {
                 submitBtn.disabled = true;
-                submitBtn.textContent = 'Регистрируем...';
+                submitBtn.textContent = t('auth.registering');
                 const apiCallTime = new Date().toISOString();
                 console.log(`[${apiCallTime}] [Register Form] Calling API register...`);
 
                 const response = await window.api.register(email, password);
                 console.log('[Register Form] API response received:', response);
                 
-                // The new backend no longer auto-logs in and returns a token immediately.
-                // It requires email verification.
                 closeAllModals();
                 registerForm.reset();
-                window.utils.showToast('Регистрация успешна! Письмо для подтверждения email отправлено на вашу почту. Проверьте почту и перейдите по ссылке для подтверждения.', 'success');
+                window.utils.showToast(t('auth.registerSuccess'), 'success');
                 // Open login modal so they are ready once they click the link
                 setTimeout(() => openLoginModal(), 1000);
             } catch (error) {
@@ -385,7 +383,7 @@ window.auth = (function() {
                         if (shouldResend) {
                             try {
                                 await window.api.resendVerificationEmail(email);
-                                window.utils.showToast('Письмо для подтверждения email отправлено. Проверьте почту.', 'success');
+                                window.utils.showToast(t('auth.resendSuccess'), 'success');
                                 setTimeout(() => openLoginModal(), 1000);
                             } catch (resendError) {
                                 window.utils.showToast(resendError.message || 'Ошибка при отправке письма', 'error');
@@ -401,7 +399,7 @@ window.auth = (function() {
                 }
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Зарегистрироваться';
+                submitBtn.textContent = t('auth.registerBtn');
             }
         };
     }
