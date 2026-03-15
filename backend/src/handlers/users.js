@@ -111,16 +111,25 @@ async function getUsers(event) {
             }
         }
 
-        // Remove sensitive data
-        const safeUsers = processedUsers.map(user => {
-            const safeUser = { ...user };
-            delete safeUser.password_hash;
-            delete safeUser._id;
-            // Hide contact links by default for privacy
-            delete safeUser.contact_links;
-            // Kept role and status for Admin UI
-            return safeUser;
-        });
+        // Build plain objects for response (avoid BSON/serialization errors in Workers)
+        const safeUsers = processedUsers.map(user => ({
+            user_id: user.user_id ? String(user.user_id) : null,
+            name: user.name != null ? String(user.name) : null,
+            email: user.email != null ? String(user.email) : null,
+            title: user.title != null ? String(user.title) : null,
+            bio: user.bio != null ? String(user.bio) : null,
+            avatar_url: user.avatar_url != null ? String(user.avatar_url) : null,
+            specializations: Array.isArray(user.specializations) ? user.specializations.map(s => (s != null ? String(s) : '')) : [],
+            portfolio_url: user.portfolio_url != null ? String(user.portfolio_url) : null,
+            telegram_url: user.telegram_url != null ? String(user.telegram_url) : null,
+            rating_as_worker: user.rating_as_worker != null ? Number(user.rating_as_worker) : null,
+            rating_as_client: user.rating_as_client != null ? Number(user.rating_as_client) : null,
+            hourly_rate: user.hourly_rate != null ? Number(user.hourly_rate) : null,
+            created_at: user.created_at ? (user.created_at instanceof Date ? user.created_at.toISOString() : String(user.created_at)) : null,
+            role: user.role != null ? String(user.role) : null,
+            status: user.status != null ? String(user.status) : null,
+            review_count: user.review_count != null ? Number(user.review_count) : null
+        }));
 
         return response.success(safeUsers);
     } catch (error) {

@@ -214,6 +214,7 @@ async function submitReview(event) {
  */
 async function canReviewUser(event) {
     try {
+        await mongoManager.connect(event.env);
         const reviewerId = event.requestContext?.authorizer?.userId;
         if (!reviewerId) {
             return response.unauthorized('Authentication required');
@@ -268,8 +269,7 @@ async function canReviewUser(event) {
         // Check if already reviewed
         let alreadyReviewed = false;
         if (canReview) {
-            const reviewsCollection = mongoManager.getCollection('reviews');
-            const existingReview = await reviewsCollection.findOne({
+            const existingReview = await mongoManager.findOne('reviews', {
                 target_user_id: targetUserId,
                 reviewer_id: reviewerId
             });
