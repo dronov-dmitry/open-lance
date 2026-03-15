@@ -502,7 +502,12 @@
             const navToggle = document.getElementById('navToggle');
             if (navToggle) navToggle.setAttribute('aria-label', this.t('nav.menu'));
             const langBtn = document.getElementById('langBtn');
-            if (langBtn) langBtn.textContent = (this.labels[this.lang] || this.lang.toUpperCase()) + ' \u25BC';
+            if (langBtn) {
+                const label = this.labels[this.lang] || this.lang.toUpperCase();
+                const code = this.flagImgCodes && this.flagImgCodes[this.lang];
+                const flagImg = code ? '<img class="lang-flag-img" src="https://flagcdn.com/w20/' + code + '.png" srcset="https://flagcdn.com/w40/' + code + '.png 2x" alt="" width="20" height="15" aria-hidden="true">' : '';
+                langBtn.innerHTML = flagImg + ' <span class="lang-label">' + label + '</span> \u25BC';
+            }
             if (document.getElementById('authBtn')) {
                 document.getElementById('authBtn').textContent = window.auth && window.auth.isLoggedIn() ? this.t('nav.logout') : this.t('nav.login');
             }
@@ -516,7 +521,9 @@
             }
         },
         supported: ['ru', 'uk', 'de', 'en'],
-        labels: { ru: 'Русский', uk: 'Українська', de: 'Deutsch', en: 'English' }
+        labels: { ru: 'Русский', uk: 'Українська', de: 'Deutsch', en: 'English' },
+        /* Flag images (ISO 3166-1 alpha-2) — display as emoji on all devices */
+        flagImgCodes: { ru: 'ru', uk: 'ua', de: 'de', en: 'gb' }
     };
 
     document.documentElement.lang = window.i18n.lang === 'uk' ? 'uk' : window.i18n.lang === 'de' ? 'de' : window.i18n.lang === 'en' ? 'en' : 'ru';
