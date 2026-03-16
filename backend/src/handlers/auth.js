@@ -382,16 +382,14 @@ async function register(event) {
         await mongoManager.insertOne('users', newUser);
 
         // EMAIL SENDING LOGIC - Send via EmailJS
-        // Get host from request origin or FRONTEND_URL env variable
-        let host = event.headers.origin;
+        // Prefer FRONTEND_URL (includes path for GitHub Pages e.g. .../open-lance); else use Origin (no path)
+        let host = event.env.FRONTEND_URL || event.headers.origin;
         if (!host) {
-            const frontendUrl = event.env.FRONTEND_URL || 'localhost:8080';
-            // If FRONTEND_URL already has protocol, use it as is, otherwise add https://
-            host = frontendUrl.startsWith('http://') || frontendUrl.startsWith('https://') 
-                ? frontendUrl 
-                : `https://${frontendUrl}`;
+            host = 'http://localhost:8080';
         }
-        // Remove trailing slash if present
+        if (!host.startsWith('http://') && !host.startsWith('https://')) {
+            host = 'https://' + host;
+        }
         host = host.replace(/\/$/, '');
         const verificationLink = `${host}/#/home?verify=${verificationToken}`;
         
@@ -550,16 +548,14 @@ async function resendVerificationEmail(event) {
         );
 
         // Send verification email via EmailJS
-        // Get host from request origin or FRONTEND_URL env variable
-        let host = event.headers.origin || event.headers['origin'];
+        // Prefer FRONTEND_URL (includes path for GitHub Pages e.g. .../open-lance); else use Origin
+        let host = event.env?.FRONTEND_URL || event.headers?.origin || event.headers?.['origin'];
         if (!host) {
-            const frontendUrl = event.env?.FRONTEND_URL || 'localhost:8080';
-            // If FRONTEND_URL already has protocol, use it as is, otherwise add https://
-            host = frontendUrl.startsWith('http://') || frontendUrl.startsWith('https://') 
-                ? frontendUrl 
-                : `https://${frontendUrl}`;
+            host = 'http://localhost:8080';
         }
-        // Remove trailing slash if present
+        if (!host.startsWith('http://') && !host.startsWith('https://')) {
+            host = 'https://' + host;
+        }
         host = host.replace(/\/$/, '');
         const verificationLink = `${host}/#/home?verify=${verificationToken}`;
         

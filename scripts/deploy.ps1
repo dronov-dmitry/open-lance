@@ -368,8 +368,9 @@ function Set-DeploymentConfig {
         $script:MONGODB_DATABASE = $dbInput
     }
 
-    # Frontend URL
-    $script:FRONTEND_URL = Read-Host "Frontend URL (e.g., https://open-lance.pages.dev) [*]"
+    # Frontend URL (used for email verification links; for GitHub Pages include repo path, e.g. https://username.github.io/repo-name)
+    Write-Host "Frontend URL: used in verification emails. For GitHub Pages use full URL with path, e.g. https://dronov-dmitry.github.io/open-lance" -ForegroundColor Gray
+    $script:FRONTEND_URL = Read-Host "Frontend URL (e.g., https://dronov-dmitry.github.io/open-lance or https://open-lance.pages.dev) [*]"
     if ([string]::IsNullOrWhiteSpace($FRONTEND_URL)) {
         $script:FRONTEND_URL = "*"
     }
@@ -560,6 +561,9 @@ function Deploy-Backend {
 MONGODB_URI="$MONGODB_URI"
 JWT_SECRET="$JWT_SECRET"
 "@
+        if (-not [string]::IsNullOrWhiteSpace($script:FRONTEND_URL) -and $script:FRONTEND_URL -ne "*") {
+            $devVarsContent += "`nFRONTEND_URL=`"$($script:FRONTEND_URL)`""
+        }
         if (-not [string]::IsNullOrWhiteSpace($script:TURNSTILE_SECRET_KEY)) {
             $devVarsContent += "`nTURNSTILE_SECRET_KEY=`"$($script:TURNSTILE_SECRET_KEY)`""
         }
@@ -634,6 +638,22 @@ JWT_SECRET="$JWT_SECRET"
         exit 1
     }
     Write-Host "[OK] JWT_SECRET secret set" -ForegroundColor Green
+
+    # FRONTEND_URL (for verification links in emails; GitHub Pages needs full URL with path)
+    if (-not [string]::IsNullOrWhiteSpace($script:FRONTEND_URL) -and $script:FRONTEND_URL -ne "*") {
+        Write-Info "Setting FRONTEND_URL secret..."
+        $tempFrontendUrl = Join-Path $env:TEMP "frontend_url.txt"
+        [IO.File]::WriteAllText($tempFrontendUrl, $script:FRONTEND_URL.Trim())
+        $secretResultFrontend = cmd.exe /c "wrangler secret put FRONTEND_URL < ""$tempFrontendUrl""" 2>&1
+        Remove-Item $tempFrontendUrl -ErrorAction SilentlyContinue
+        if ($secretResultFrontend -match "error|failed" -and $secretResultFrontend -notmatch "Created|Updated") {
+            Write-WarningMsg "Failed to set FRONTEND_URL secret"
+        } else {
+            Write-Host "[OK] FRONTEND_URL secret set" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "[SKIP] FRONTEND_URL not set or is * (verification links will use request Origin)" -ForegroundColor Gray
+    }
 
     if (-not [string]::IsNullOrWhiteSpace($EMAILJS_PUBLIC_KEY)) {
         Write-Info "Setting EMAILJS_PUBLIC_KEY secret..."
